@@ -13,7 +13,7 @@
 #define EIGEN_MPL2_ONLY // LGPLライセンスのコードを使わない．
 using namespace Eigen;
 
-#define G 9.805
+#define G 9.80665
 #define K 5.0
 #define CoM_HEIGHT 0.280
 
@@ -28,6 +28,16 @@ Vector3d desired_ZMP(Vector3d P_ref, Vector3d CP_real, Vector3d CP_ref, double o
 	Vector3d P_des;
 	P_des = P_ref + (1 + (K/omega))*(CP_real - CP_ref);
 	return P_des;
+}
+
+geometry_msgs::PointStamped setPoint(Vector3f &position,int seq, ros::Time stamp_time){
+	geometry_msgs::PointStamped ps;
+		ps.header.seq = seq;
+		ps.header.stamp = stamp_time;
+		ps.point.x = position[0];
+		ps.point.y = position[1];
+		ps.point.z = position[2];
+	return ps;
 }
 
 int main(int argc, char *argv[]){
@@ -82,18 +92,32 @@ int main(int argc, char *argv[]){
 			loop_rate.sleep();
 		}
 	}
+	//基準ZMP間をつなぐ遊脚の足先軌道を生成
+	MatrixXd Free_Leg_position(3,data_count);
+	Free_Leg_position.col(0) << 0.0, -0.01, 0.0; //左足先の初期位置
+	Vector3d start_position,end_position;
+	for (s=3;s<step;s++){
+		start_position = ZMP_ref.col(s-2);
+		end_position = ZMP_ref.col(s);
+		double dx = (end_position - start_position)/division;
+		double dz = 0.01 / (division/2);
+		for(i=1;i<division;i++){
+		}
+	}
+	
 
-	// CPの誤差を修正するZMPの計算と遊脚の目標値を生成
+	// CPの誤差を修正するZMPの計算と左右脚の目標を配信
 	MatrixXd ZMP_des = MatrixXd::Zero(3,data_count);
 	i = 0;
 	s = 1;
 	while(ros::ok()){
 		//CPの誤差を修正する所望のZMP
 		ZMP_des.col(i) = desired_ZMP(ZMP_ref.col(s-1),sub_real_CP,CP_ref_ti.col(i),omega);
-		//基準ZMPと間をつなぐ遊脚の足先軌道を生成
+		
 
 		i++;
 		if(s % division == 0)s++;
+
 		ros::spinOnce();
 		loop_rate.sleep();
 	}
