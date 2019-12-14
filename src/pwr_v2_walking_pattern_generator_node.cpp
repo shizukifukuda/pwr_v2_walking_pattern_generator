@@ -82,42 +82,67 @@ int main(int argc, char *argv[]){
 	int data_count = step * (int)Hz;
 	MatrixXd CP_ref_ti(3,data_count);
 	int s = 0;
+	int j;
 	ros::Rate loop_rate(Hz);
 	time=ros::Time::now().toSec;
-	for(i = 0 ; i <= step ; i++){
-		for (int j=0 ; j<division ; j++){
+	for(i=0 ; i<=step ; i++){
+		for (j=0 ; j<division ; j++){
 			time = ros::Time::now().toSec - time;
 			CP_ref_ti.col(s) = ZMP_ref.col(i) + exp(omega*time) * (CP_ref_ini.col(i) - ZMP_ref.col(i));
 			s++;
 			loop_rate.sleep();
 		}
 	}
-	//基準ZMP間をつなぐ遊脚の足先軌道を生成
+	
+	// 基準ZMP間をつなぐ遊脚の足先軌道を生成
 	MatrixXd Free_Leg_position(3,data_count);
-	Free_Leg_position.col(0) << 0.0, -0.01, 0.0; //左足先の初期位置
-	Vector3d start_position,end_position;
-	for (s=3;s<step;s++){
+	Vector3d start_position, end_position;
+	j = 0;
+	Free_Leg_position.col(j) << 0.0, -0.01, 0.0; //左足先の初期位置
+	// 最初の一歩目
+	s = 2;
+	j = 1;
+	start_position = ZMP_ref.col(s-2);
+	end_position = ZMP_ref.col(s);
+	double dx = (end_position[0] - start_position[0]) / (2*division);
+	double dz = 0.01 / (division);
+	for(i=1 ; i<(division) ; i++){
+		Free_Leg_position(0,j) += dx;
+		if( i<(division/2) )Free_Leg_position(2,j) += dz;
+		else if( i>=(division/2) )Free_Leg_position(2,j) -= dz;
+		j++;
+	}
+	// 2歩目以降
+	for (s=3 ; s<step ; s++){
 		start_position = ZMP_ref.col(s-2);
 		end_position = ZMP_ref.col(s);
-		double dx = (end_position - start_position)/division;
-		double dz = 0.01 / (division/2);
-		for(i=1;i<division;i++){
+		double dx = (end_position[0] - start_position[0]) / (2*division);
+		double dz = 0.01 / (division);
+		for(i=1 ; i<(2*division) ; i++){
+			Free_Leg_position(0,j) += dx;
+			if( i<division )Free_Leg_position(2,j) += dz;
+			else if( i>=division )Free_Leg_position(2,j) -= dz;
+			j++;
 		}
 	}
-	
 
 	// CPの誤差を修正するZMPの計算と左右脚の目標を配信
 	MatrixXd ZMP_des = MatrixXd::Zero(3,data_count);
-	i = 0;
-	s = 1;
+	i = 1;
+	s = 0;
+	float lm = 1.0;
 	while(ros::ok()){
 		//CPの誤差を修正する所望のZMP
-		ZMP_des.col(i) = desired_ZMP(ZMP_ref.col(s-1),sub_real_CP,CP_ref_ti.col(i),omega);
-		
-
+		ZMP_des.col(i-1) = desired_ZMP(ZMP_ref.col(s),sub_real_CP,CP_ref_ti.col(i-1),omega);
+		if(lm == 1){ // Sup:Right / Free:Left
+		}
+		else if(lm == -1){ // Sup:Left / Free:Right
+		}
+		if(i % division == 0){
+			s++;
+			lm = lm * -1.0;
+		}
 		i++;
-		if(s % division == 0)s++;
-
 		ros::spinOnce();
 		loop_rate.sleep();
 	}
