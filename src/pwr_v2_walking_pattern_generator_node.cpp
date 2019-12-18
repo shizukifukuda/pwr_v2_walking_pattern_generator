@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <math.h>
+
 #include <ros/ros.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/PointStamped.h>
 #include <std_msgs/Float64.h>
+
 // 行列演算ライブラリ
 #include "Eigen/Core"
 #include "Eigen/Dense"
@@ -45,8 +47,8 @@ void RungeKutta(MatrixXd &X, double u, double dt, MatrixXd A, MatrixXd B, Matrix
 	X = X + k;
 }
 
-
 int main(int argc, char *argv[]){
+
 	ros::init(argc, argv, "pwr_v2_walking_pattern_generator_node");
 	ros::NodeHandle nh;
 
@@ -91,10 +93,10 @@ int main(int argc, char *argv[]){
 	int s = 0;
 	int j;
 	ros::Rate loop_rate(Hz);
-	time=ros::Time::now().toSec;
+	time=ros::Time::now().toSec();
 	for(i=0 ; i<=step ; i++){
 		for (j=0 ; j<division ; j++){
-			time = ros::Time::now().toSec - time;
+			time = ros::Time::now().toSec() - time;
 			CP_ref_ti.col(s) = ZMP_ref.col(i) + exp(omega*time) * (CP_ref_ini.col(i) - ZMP_ref.col(i));
 			s++;
 			loop_rate.sleep();
@@ -184,13 +186,13 @@ int main(int argc, char *argv[]){
 		ros::Time TIME = ros::Time::now();
 		// Sup:Right / Free:Left
 		if(leg_mode_msg.data == 1.0){
-		right_foot = setPoint(ZMP_des.col(i-1),i,TIME);
-		left_foot = setPoint(Free_Leg_position.col(i-1),i,TIME);
+			right_foot = setPoint(ZMP_des.col(i-1),i,TIME);
+			left_foot = setPoint(Free_Leg_position.col(i-1),i,TIME);
 		}
 		// Sup:Left / Free:Right
 		else if(leg_mode_msg.data == -1.0){
-		right_foot = setPoint(Free_Leg_position.col(i-1),i,TIME);
-		left_foot = setPoint(ZMP_des.col(i-1),i,TIME);
+			right_foot = setPoint(Free_Leg_position.col(i-1),i,TIME);
+			left_foot = setPoint(ZMP_des.col(i-1),i,TIME);
 		}
 		LIP_CoM_position_pub.publish( setPoint(LIP_CoM_pos.col(i-1),i,TIME) );
 		right_foot_position_pub.publish(right_foot);
@@ -202,12 +204,10 @@ int main(int argc, char *argv[]){
 				leg_mode_msg.data = leg_mode_msg.data * -1.0;
 				leg_mode_pub.publish(leg_mode_msg);
 			}
-			
 		}
-
 		i++;
-		ros::spinOnce();
 		loop_rate.sleep();
+		ros::spinOnce();
 	}
 	return 0;
 }
