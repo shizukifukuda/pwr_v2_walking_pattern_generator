@@ -5,24 +5,27 @@
 #include <geometry_msgs/PointStamped.h>
 
 // 行列演算ライブラリ
-#define EIGEN_NO_DEBUG // コード内のassertを無効化．
-#define EIGEN_DONT_VECTORIZE // SIMDを無効化．
-#define EIGEN_DONT_PARALLELIZE // 並列を無効化．
-#define EIGEN_MPL2_ONLY // LGPLライセンスのコードを使わない．
+// #define EIGEN_NO_DEBUG // コード内のassertを無効化．
+// #define EIGEN_DONT_VECTORIZE // SIMDを無効化．
+// #define EIGEN_DONT_PARALLELIZE // 並列を無効化．
+// #define EIGEN_MPL2_ONLY // LGPLライセンスのコードを使わない．
 #include "Eigen/Core"
 #include "Eigen/Dense"
 #define PRINT_MAT(X) cout << #X << ":\n" << X << endl << endl
 #define PRINT_MAT2(X,DESC) cout << DESC << ":\n" << X << endl << endl
 #define PRINT_FNC    cout << "[" << __func__ << "]" << endl
 
+using namespace Eigen;
+
 #define G 9.80665					// 重力加速度
 #define K 5.0						// ゲイン
-#define CoM_HEIGHT 0.280			// 重心の高さ
+#define CoM_HEIGHT 0.230			// 重心の高さ
 #define step  5						// 歩数
-#define division 100				// 一歩あたりの分割数
-#define limit_time 1.0				// 一歩あたりの計算時間（sec）
+#define division 10				// 一歩あたりの分割数
+#define limit_time 5				// 一歩あたりの計算時間（sec）
 
-using namespace Eigen;
+Vector3d Left_foot_init_position(0.0, 0.033, 0.0);		//左足先の初期位置
+Vector3d Right_foot_init_position(0.0, -0.033, 0.0);	//右足先の初期位置
 
 Vector3d sub_real_CP;
 void Sub_real_CP_Callback(const geometry_msgs::PointStamped &real_CP)
@@ -61,7 +64,6 @@ void RungeKutta(MatrixXd &X, double u, double dt, MatrixXd A, MatrixXd B, Matrix
 }
 
 int main(int argc, char *argv[]){
-		
 	ros::init(argc, argv, "pwr_v2_walking_pattern_generator_node");
 	ros::NodeHandle nh;
 
@@ -74,10 +76,12 @@ int main(int argc, char *argv[]){
 	
 	int i;
 	double Hz = 1 / (limit_time / (double)division);	//ループ周期
-
+	ROS_INFO("Hz = %lf",Hz);
 	// 基準ZMPの設定
 	MatrixXd ZMP_ref(3,step);
-	ZMP_ref <<  0.0, 0.00, 0.05,0.10, 0.15,	0.0, 0.01,-0.01,0.01,-0.01,	0.0, 0.00, 0.00,0.00, 0.00;
+	ZMP_ref <<  0.00, 0.00, 0.04, 0.08, 0.12,
+				0.00,-0.02, 0.02,-0.02,00.02,
+				0.00, 0.00, 0.00, 0.00, 0.00;
 
 	// 基準CPの設定
 	MatrixXd CP_ref_ini(3,step);
@@ -86,30 +90,39 @@ int main(int argc, char *argv[]){
 	double omega = sqrt(G / ( CoM_HEIGHT - ZMP_ref(2,0) ) );
 	CP_ref_end.col(step-1) = ZMP_ref.col(step-1);
 	for(i = step-1 ; i >= 1; i--){
-		CP_ref_ini.col(i) = ZMP_ref.col(i) + exp(-omega*num_time) * (CP_ref_end.col(i) - ZMP_ref.col(i));
+		CP_ref_ini.col(i) = ZMP_ref.col(i) + exp(-1*omega*num_time) * (CP_ref_end.col(i) - ZMP_ref.col(i));
 		CP_ref_end.col(i-1) = CP_ref_ini.col(i);
 		num_time = num_time - limit_time;
+		std::cout << "CP_ref_ini = \n"<< CP_ref_ini.col(i) << std::endl;
+		std::cout << "num_time = "<< num_time << std::endl;
 	}
-	CP_ref_ini.col(0) = ZMP_ref.col(0) + exp(-omega*num_time) * (CP_ref_ini.col(0) - ZMP_ref.col(0));
+	CP_ref_ini.col(0) = ZMP_ref.col(0) + exp(-1*omega*num_time) * (CP_ref_ini.col(0) - ZMP_ref.col(0));
+	std::cout << "CP_ref_ini = \n"<< CP_ref_ini.col(0) << std::endl;
+	ROS_INFO("[WPG] Set Reference Capture Point");
 
 	// 基準CP軌道の設計
-	int data_count = (step-1) * (int)Hz;
+	int data_count = (step-1) * (int)division;
 	MatrixXd CP_ref_ti(3,data_count);
+	ROS_INFO("[debag] data_count = %d",data_count);
 	int s = 0;
 	int j;
 	ros::Rate loop_rate(Hz);
-	double time = ros::Time::now().toSec();
-	for(i=0 ; i<=step ; i++){
+	double base_time = ros::Time::now().toSec();
+	for(i=0 ; i<(step-1) ; i++){
 		for (j=0 ; j<division ; j++){
-			time = ros::Time::now().toSec() - time;
+			double time = ros::Time::now().toSec() - base_time;
 			CP_ref_ti.col(s) = ZMP_ref.col(i) + exp(omega*time) * (CP_ref_ini.col(i) - ZMP_ref.col(i));
+			ROS_INFO("[debag] %d-%d,(%d)",i,j,s);
+			std::cout << "CP_ref_ti = \n"<< CP_ref_ti.col(s) << std::endl;
 			s++;
 			loop_rate.sleep();
 		}
 	}
+	ROS_INFO("[WPG] Set Reference Capture Point Load");
+
 	// 基準ZMP間をつなぐ遊脚の足先軌道を生成
 	MatrixXd Free_Leg_position = MatrixXd::Zero(3,data_count);
-	Free_Leg_position.col(0) << 0.0, -0.01, 0.0; //左足先の初期位置
+	Free_Leg_position.col(0) = Left_foot_init_position; //左足先の初期位置
 	// 最初の一歩目
 	s = 2;
 	j = 1;
@@ -123,11 +136,12 @@ int main(int argc, char *argv[]){
 		else if( i>=division ) Free_Leg_position(2,j) -= dz;
 		j++;
 	}
+	ROS_INFO("[WPG] Set Free Leg Load (1)");
 	// 2歩目以降
 	for (s=3 ; s<step ; s++){
 		start_position = ZMP_ref.col(s-2);
 		end_position = ZMP_ref.col(s);
-		double dx = (end_position[0] - start_position[0]) / division;
+		double dx = (end_position(0) - start_position(0)) / division;
 		double dz = 0.01 / (division/2);
 		for(i=1 ; i<division ; i++){
 			Free_Leg_position(0,j) += dx;
@@ -136,6 +150,8 @@ int main(int argc, char *argv[]){
 			j++;
 		}
 	}
+	ROS_INFO("[WPG] Set Free Leg Load (2~)");
+
 	// LIP model
 	MatrixXd A(2, 2);
 	A(0, 0) = 0;
@@ -155,67 +171,79 @@ int main(int argc, char *argv[]){
 	// CPの誤差を修正するZMPの計算と左右脚の目標を配信
 	MatrixXd ZMP_des = MatrixXd::Zero(3,data_count);
 	MatrixXd LIP_CoM_pos = MatrixXd::Constant(3,data_count,CoM_HEIGHT);
+	LIP_CoM_pos.col(0) << 0,0,CoM_HEIGHT;
 	MatrixXd LIP_CoM_spd = MatrixXd::Zero(3,data_count);
 	MatrixXd LIP_CP  = MatrixXd::Zero(3,data_count);
-	i = 1;
-	s = 0;
 	geometry_msgs::PointStamped right_foot_msg;
 	geometry_msgs::PointStamped left_foot_msg;
 	geometry_msgs::PointStamped waist_msg;
 	std_msgs::Float64 leg_mode_msg;
-	leg_mode_msg.data = 1.0;
-	leg_mode_pub.publish(leg_mode_msg);
+
 	while(ros::ok()){
-		// CPの誤差を修正する所望のZMP(bno055使用)
-		// ZMP_des.col(i-1) = desired_ZMP(ZMP_ref.col(s),sub_real_CP,CP_ref_ti.col(i-1),omega);
+		s = 0;
+		leg_mode_msg.data = 1.0;
+		leg_mode_pub.publish(leg_mode_msg);
+		for(i=1;i<=data_count;i++){
+			// CPの誤差を修正する所望のZMP(bno055使用)
+			// ZMP_des.col(i-1) = desired_ZMP(ZMP_ref.col(s),sub_real_CP,CP_ref_ti.col(i-1),omega);
 
-		// CPの誤差を修正する所望のZMP(LIP model 使用)
-		ZMP_des.col(i-1) = desired_ZMP(ZMP_ref.col(s),LIP_CP.col(i-1),CP_ref_ti.col(i-1),omega);
+			// CPの誤差を修正する所望のZMP(LIP model 使用)
+			ZMP_des.col(i-1) = desired_ZMP(ZMP_ref.col(s),LIP_CP.col(i-1),CP_ref_ti.col(i-1),omega);
 
-		// X軸成分のLIPモデルからCPを求める
-		u = ZMP_des(0,i-1);
-		RungeKutta(X, u, dt, A, B, C, D);
-		Y = C*X;
-		LIP_CoM_pos(0,i-1) = Y(0);
-		LIP_CoM_spd(0,i-1) = Y(1);
-		LIP_CP(0,i-1) = Y(0) + Y(1)/omega;
-		// Y軸成分のLIPモデルからCPを求める
-		u = ZMP_des(1,i-1);
-		RungeKutta(X, u, dt, A, B, C, D);
-		Y = C*X;
-		LIP_CoM_pos(1,i-1) = Y(0);
-		LIP_CoM_spd(1,i-1) = Y(1);
-		LIP_CP(1,i-1) = Y(0) + Y(1)/omega;
+			// X軸成分のLIPモデルからCPを求める
+			u = ZMP_des(0,i-1);
+			RungeKutta(X, u, dt, A, B, C, D);
+			Y = C*X;
+			LIP_CoM_pos(0,i) = Y(0);
+			LIP_CoM_spd(0,i) = Y(1);
+			LIP_CP(0,i) = Y(0) + Y(1)/omega;
+			// Y軸成分のLIPモデルからCPを求める
+			u = ZMP_des(1,i-1);
+			RungeKutta(X, u, dt, A, B, C, D);
+			Y = C*X;
+			LIP_CoM_pos(1,i) = Y(0);
+			LIP_CoM_spd(1,i) = Y(1);
+			LIP_CP(1,i) = Y(0) + Y(1)/omega;
 
-		ros::Time TIME = ros::Time::now();
-		
-		waist_msg = setPoint(LIP_CoM_pos.col(i-1),i,TIME);
-		
-		// Sup:Right / Free:Left
-		if(leg_mode_msg.data == 1.0){
-			right_foot_msg = setPoint(ZMP_des.col(i-1),i,TIME);
-			left_foot_msg = setPoint(Free_Leg_position.col(i-1),i,TIME);
-		}
-		// Sup:Left / Free:Right
-		else if(leg_mode_msg.data == -1.0){
-			right_foot_msg = setPoint(Free_Leg_position.col(i-1),i,TIME);
-			left_foot_msg = setPoint(ZMP_des.col(i-1),i,TIME);
-		}
-		
-		LIP_CoM_position_pub.publish(waist_msg);
-		right_foot_position_pub.publish(right_foot_msg);
-		left_foot_position_pub.publish(left_foot_msg);
+			ros::Time TIME = ros::Time::now();
+			
+			waist_msg = setPoint(LIP_CoM_pos.col(i-1),i,TIME);
 
-		if(i%division ==0 ){
-			s++;
-			if(i>=(2*division)){
-				leg_mode_msg.data = leg_mode_msg.data * -1.0;
-				leg_mode_pub.publish(leg_mode_msg);
+			if((i-1)<(division)){
+				right_foot_msg = setPoint(Right_foot_init_position ,i,TIME);
+				left_foot_msg = setPoint(Free_Leg_position.col(i-1),i,TIME);
 			}
+			// Sup:Right / Free:Left
+			else if(leg_mode_msg.data==1.0 && (i-1)>=(division)){
+				right_foot_msg = setPoint(ZMP_des.col(i-1),i,TIME);
+				left_foot_msg = setPoint(Free_Leg_position.col(i-1),i,TIME);
+			}
+			// Sup:Left / Free:Right
+			else if(leg_mode_msg.data==-1.0 && (i-1)>=(division)){
+				right_foot_msg = setPoint(Free_Leg_position.col(i-1),i,TIME);
+				left_foot_msg = setPoint(ZMP_des.col(i-1),i,TIME);
+			}
+			
+			LIP_CoM_position_pub.publish(waist_msg);
+			right_foot_position_pub.publish(right_foot_msg);
+			left_foot_position_pub.publish(left_foot_msg);
+
+			if(i%division ==0 && i<data_count){
+				s++;
+				if(i>=(2*division)){
+					leg_mode_msg.data = leg_mode_msg.data * -1.0;
+					leg_mode_pub.publish(leg_mode_msg);
+				}
+			}
+			ROS_INFO("[WPG] Publish Point (i=%d, leg_mode=%1.1f)",i,leg_mode_msg.data);
+			std::cout << "ZMP_des = \n"<< ZMP_des.col(i-1) << std::endl;
+			std::cout << "ZMP_ref = \n"<< ZMP_ref.col(s) << std::endl;
+			std::cout << "CP_ref_ti = \n"<< CP_ref_ti.col(i-1) << std::endl;
+			std::cout << "LIP_CoM_pos = \n"<< LIP_CoM_pos.col(i-1) << std::endl;
+
+			loop_rate.sleep();
+			ros::spinOnce();
 		}
-		i++;
-		loop_rate.sleep();
-		ros::spinOnce();
 	}
 	return 0;
 }
