@@ -13,6 +13,7 @@ find_package(
     geometry_msgs
     sensor_msgs
     std_msgs
+    tf
 )
 
 ## System dependencies are found with CMake's conventions
