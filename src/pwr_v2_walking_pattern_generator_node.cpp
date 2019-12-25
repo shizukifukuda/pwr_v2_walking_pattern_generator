@@ -57,16 +57,6 @@ MatrixXd RungeKutta(MatrixXd dX, MatrixXd X, MatrixXd u, double tt, double dt, M
     return X = X + k;
 }
 
-void waist_pose_publisher(Vector3d CoM, ros::Time time){
-	static tf::TransformBroadcaster br;
-	tf::Transform transform;
-	transform.setOrigin(tf::Vector3(CoM(0), CoM(1), CoM_HEIGHT) );
-	tf::Quaternion q;
-	q.setRPY(0, 0, 0);
-	transform.setRotation(q);
-	br.sendTransform(tf::StampedTransform(transform, time, "world", "base_link"));
-}
-
 int main(int argc, char *argv[]){
 	ros::init(argc, argv, "pwr_v2_walking_pattern_generator_node");
 	ros::NodeHandle nh;
@@ -164,36 +154,36 @@ int main(int argc, char *argv[]){
 
 	// LIP model
 	MatrixXd A(2, 2);
-	A(0, 0) = 0;
-	A(0, 1) = 1;
+	A(0, 0) = 0.0;
+	A(0, 1) = 1.0;
 	A(1, 0) = pow(omega,2);
-	A(1, 1) = 0;
+	A(1, 1) = 0.0;
 	MatrixXd B(2, 1);
-	B(0, 0) = 0;
-	B(1, 0) = -1 * pow(omega,2);
+	B(0, 0) = 0.0;
+	B(1, 0) = -1.0 * pow(omega,2);
 
 	MatrixXd C(2, 2);
-	C(0, 0) = 1;
-	C(0, 1) = 0;
-	C(1, 0) = 0;
-	C(1, 1) = 1;
+	C(0, 0) = 1.0;
+	C(0, 1) = 0.0;
+	C(1, 0) = 0.0;
+	C(1, 1) = 1.0;
 	MatrixXd D(2,1);
-	D(0,0) = 0;
-	D(1,0) = 0;
+	D(0,0) = 0.0;
+	D(1,0) = 0.0;
 
 	double dt = limit_time / division;
 	double tt = 0.0;
 
 	MatrixXd XX(2, 1);
-    XX(0, 0) = 0;
-    XX(1, 0) = 0;
+    XX(0, 0) = 0.0;
+    XX(1, 0) = 0.0;
 	MatrixXd XdX = MatrixXd::Zero(2, 1);
 	MatrixXd Xu = MatrixXd::Zero(1, 1);
 	MatrixXd XY = MatrixXd::Zero(2, 1);
 
 	MatrixXd YX(2, 1);
-    YX(0, 0) = 0;
-    YX(1, 0) = 0;
+    YX(0, 0) = 0.0;
+    YX(1, 0) = 0.0;
 	MatrixXd YdX = MatrixXd::Zero(2, 1);
 	MatrixXd Yu = MatrixXd::Zero(1, 1);
 	MatrixXd YY = MatrixXd::Zero(2, 1);
@@ -220,7 +210,7 @@ int main(int argc, char *argv[]){
 		// ZMP_des.col(i-1) = ZMP_ref.col(s) + ( (1.0 + (K/omega)) * ( sub_real_CP - CP_ref_ti.col(i-1) ) );
 		// CPの誤差を修正する所望のZMP(LIP model 使用)
 		ROS_INFO("ZMP_des");
-		ZMP_des.col(i) = ZMP_ref.col(s) + ( ( 1.0 + (K/omega) ) * ( LIP_CP.col(i-1) - CP_ref_ti.col(i) ) );
+		ZMP_des.col(i) = ZMP_ref.col(s) + ( ( 1.0 + (K/omega) ) * ( LIP_CP.col(i-1) - CP_ref_ti.col(i-1) ) );
 		std::cout << "ZMP_des = \n"<< ZMP_des.col(i) << std::endl;
 
 		// X軸成分のLIPモデルからCPを求める
@@ -256,7 +246,7 @@ int main(int argc, char *argv[]){
 		// Sup:Left / Free:Right
 		else if(leg_mode_msg.data==-1.0 && i>division){
 			right_foot_msg = setPoint(Free_Leg_position.col(i),i,TIME);
-			left_foot_msg = setPoint(ZMP_des.col(i-1),i,TIME);
+			left_foot_msg = setPoint(ZMP_des.col(i),i,TIME);
 		}
 		if(i%division ==0 && i<data_count){
 			s++;
@@ -266,7 +256,6 @@ int main(int argc, char *argv[]){
 			}
 		}
 		waist_msg = setPoint(LIP_CoM_pos.col(i),i,TIME);
-		waist_pose_publisher(LIP_CoM_pos.col(i),TIME);
 		LIP_CoM_position_pub.publish(waist_msg);
 		right_foot_position_pub.publish(right_foot_msg);
 		left_foot_position_pub.publish(left_foot_msg);
