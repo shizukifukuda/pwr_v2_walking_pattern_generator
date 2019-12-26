@@ -23,8 +23,8 @@ using namespace Eigen;
 #define K 5.0						// ゲイン
 #define CoM_HEIGHT 0.230			// 重心の高さ
 #define step  5						// 歩数
-#define division 60				// 一歩あたりの分割数
-#define limit_time 1				// 一歩あたりの計算時間（sec）
+#define division 100				// 一歩あたりの分割数
+#define limit_time 2				// 一歩あたりの計算時間（sec）
 
 Vector3d Left_foot_init_position(0.0, 0.033, 0.0);		//左足先の初期位置
 Vector3d Right_foot_init_position(0.0, -0.033, 0.0);	//右足先の初期位置
@@ -48,6 +48,15 @@ geometry_msgs::PointStamped setPoint(Vector3d position, int seq, ros::Time stamp
 	return ps;
 }
 
+void RungeKutta(MatrixXd dX, MatrixXd &X, MatrixXd u, double tt, double dt, MatrixXd A, MatrixXd B, MatrixXd C, MatrixXd D) {
+    MatrixXd k1 = A*X + B*u;
+    MatrixXd k2 = A*(X + 0.5*k1*dt) + B*u;
+    MatrixXd k3 = A*(X + 0.5*k2*dt) + B*u;
+    MatrixXd k4 = A*(X + k3*dt) + B*u;
+    MatrixXd k = (k1 + 2.0*k2 + 2.0*k3 + k4)*dt / 6.0;
+    X = X + k;
+}
+
 int main(int argc, char *argv[]){
 	ros::init(argc, argv, "pwr_v2_walking_pattern_generator_node");
 	ros::NodeHandle nh;
@@ -61,18 +70,18 @@ int main(int argc, char *argv[]){
 	
 	// 基準ZMPの設定
 	MatrixXd ZMP_ref(3,step);
-	ZMP_ref <<  0.00, 0.00, 0.10, 0.20, 0.30,
-				0.00,-0.033, 0.033,-0.033, 0.033,
+	ZMP_ref <<  0.00, 0.00, 0.11, 0.22, 0.33,
+				0.00,-0.03, 0.03,-0.03, 0.03,
 				0.00, 0.00, 0.00, 0.00, 0.00;
 
 	double omega = sqrt(G / ( CoM_HEIGHT - ZMP_ref(2,0) ) );	// 角速度
-	double Hz = 1 / (limit_time / (double)division);			// ループ周期
+	double Hz = 1 / ((double)limit_time / (double)division);			// ループ周期
 	ROS_INFO("Hz = %lf",Hz);
 
 	// 基準CPの設定
 	MatrixXd CP_ref_ini(3,step);
 	MatrixXd CP_ref_end(3,step);
-	double num_time = limit_time * step;
+	double num_time = (double)limit_time * (double)step;
 	int i;
 	CP_ref_end.col(step-1) = ZMP_ref.col(step-1);
 	for(i = step-1 ; i >= 1; i--){
@@ -152,15 +161,42 @@ int main(int argc, char *argv[]){
 	geometry_msgs::PointStamped left_foot_msg;
 	geometry_msgs::PointStamped waist_msg;
 	std_msgs::Float64 leg_mode_msg;
-	double dt = (double)limit_time / (double)division;
-	MatrixXd dT(1,1);
-	dT(0,0) = dt;
-	std::cout << "dT = " << dT << std::endl;
-	MatrixXd OMEGA = MatrixXd::Constant(1,1,omega);
 	s = 0;
 	i = 1;
 	leg_mode_msg.data = 1.0;
 	leg_mode_pub.publish(leg_mode_msg);
+
+	MatrixXd A(2, 2);
+    A(0, 0) = 0;
+    A(0, 1) = 1;
+    A(1, 0) = 0;
+    A(1, 1) = pow(omega,2);
+    MatrixXd B(2, 1);
+    B(0, 0) = 0;
+    B(1, 0) = -1*pow(omega,2);
+
+    MatrixXd C(2, 2);
+    C(0, 0) = 1;
+    C(0, 1) = 0;
+	C(1, 0) = 0;
+	C(1, 1) = 1;
+    MatrixXd D(2, 1);
+    D(0, 0) = 0;
+	D(1, 0) = 0;
+
+    double tt = 0.0;
+	double dt = (double)limit_time/(double)division;
+    MatrixXd X(2, 1);
+    X(0, 0) = 0;
+    X(1, 0) = 0;
+    MatrixXd dX(2, 1);
+    dX(0, 0) = 0;
+    dX(1, 0) = 0;
+    MatrixXd u(1, 1);
+    u(0, 0) = 0;
+    MatrixXd Y(2, 1);
+    Y(0, 0) = 0;
+	Y(1, 0) = 0;
 
 	while(ros::ok() && i<data_count){
 		// CPの誤差を修正する所望のZMP(bno055使用)
@@ -172,16 +208,26 @@ int main(int argc, char *argv[]){
 		std::cout << "ZMP_des = \n"<< ZMP_des.col(i-1) << std::endl;
 		std::cout << "ZMP_ref = \n"<< ZMP_ref.col(s) << std::endl;
 		// CPを求める
-		LIP_CoM_spd.col(i) = OMEGA(0,0) * (CP_ref_ti.col(i-1) - LIP_CoM_pos.col(i-1));
-		LIP_CoM_pos(0,i) = LIP_CoM_pos(0,i-1) + ( LIP_CoM_spd(0,i)*dT(0,0) );
-		LIP_CoM_pos(1,i) = LIP_CoM_pos(1,i-1) + ( LIP_CoM_spd(1,i)*dT(0,0) );
+		// LIP_CoM_spd.col(i) = OMEGA(0,0) * (CP_ref_ti.col(i-1) - LIP_CoM_pos.col(i-1));
+		// LIP_CoM_pos(0,i) = LIP_CoM_pos(0,i-1) + ( LIP_CoM_spd(0,i)*dt );
+		// LIP_CoM_pos(1,i) = LIP_CoM_pos(1,i-1) + ( LIP_CoM_spd(1,i)*dt );
 		LIP_CoM_pos(2,i) = CoM_HEIGHT;
-		LIP_CP.col(i) = LIP_CoM_pos.col(i) + ( LIP_CoM_spd.col(i) / OMEGA(0,0) );
-		std::cout << "LIP_CoM_spd = \n"<< LIP_CoM_spd.col(i) << std::endl;
-		std::cout << "LIP_CoM_pos = "<< std::endl;
-		std::cout << LIP_CoM_pos(0,i) << std::endl;
-		std::cout << LIP_CoM_pos(1,i) << std::endl;
-		std::cout << LIP_CoM_pos(2,i) << std::endl;
+		// LIP_CP.col(i) = LIP_CoM_pos.col(i) + ( LIP_CoM_spd.col(i) / OMEGA(0,0) );
+
+		u(0,0) = ZMP_des(0,i-1);
+		RungeKutta(dX, X, u, tt, dt, A, B, C, D);
+        Y = C*X;
+		LIP_CoM_pos(0,i) = Y(0);
+		LIP_CoM_spd(0,i) = Y(1);
+		LIP_CP(0,i) = Y(0) + (Y(1)/omega);
+		u(0,0) = ZMP_des(1,i-1);
+		RungeKutta(dX, X, u, tt, dt, A, B, C, D);
+        Y = C*X;
+		LIP_CoM_pos(1,i) = Y(0);
+		LIP_CoM_spd(1,i) = Y(1);
+		LIP_CP(1,i) = Y(0) + (Y(1)/omega);
+
+		std::cout << "LIP_CoM_pos = \n"<< LIP_CoM_pos.col(i) << std::endl;
 		std::cout << "LIP_CP = \n"<< LIP_CP.col(i) << std::endl;
 		std::cout << "CP_ref_ti = \n"<< CP_ref_ti.col(i-1) << std::endl;
 		
