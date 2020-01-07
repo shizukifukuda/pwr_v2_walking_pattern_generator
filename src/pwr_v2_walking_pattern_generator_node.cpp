@@ -21,11 +21,11 @@
 using namespace Eigen;
 
 #define G 9.805					// 重力加速度
-#define K 5.0						// ゲイン
-#define CoM_HEIGHT 0.230			// 重心の高さ
-#define step  8						// 基準ZMPの数
-#define division 100				// 一歩あたりの分割数
-#define limit_time 2.0				// 一歩あたりの計算時間（sec）
+#define K 1.0					// ゲイン
+#define CoM_HEIGHT 0.230		// 重心の高さ
+int step = 8;					// 基準ZMPの数
+int division = 100;				// 一歩あたりの分割数
+double limit_time = 1.0;		// 一歩あたりの計算時間（sec）
 
 Vector3d Left_foot_init_position(0.0, 0.033, 0.0);		//左足先の初期位置
 Vector3d Right_foot_init_position(0.0, -0.033, 0.0);	//右足先の初期位置
@@ -75,32 +75,44 @@ int main(int argc, char *argv[]){
 				0.00,-0.03, 0.03,-0.03, 0.03,-0.03, 0.03,-0.03,
 				0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00;
 
-	double omega = sqrt(G / CoM_HEIGHT);		// 角速度
-	double Hz = 1 / ((double)limit_time / (double)division);		// ループ周期
-	ROS_INFO("Hz = %lf",Hz);
+	double omega = sqrt(G/CoM_HEIGHT);		// 角速度
+	double Hz = 1 / (limit_time / (double)division);		// ループ周期
+	ROS_INFO("[WPG] Hz = %lf",Hz);
+	ROS_INFO("[WPG] OMEGA = %lf",omega);
 
 	// 基準CPの設定
+	ROS_INFO("[WPG] Set Reference Capture Point");
 	MatrixXd CP_ref_ini(3,step);
 	MatrixXd CP_ref_end(3,step);
-	double num_time = (double)limit_time * (double)(step-1);
-	int i;
-	CP_ref_end.col(step-1) = ZMP_ref.col(step-1);
-	for(i = step-1 ; i > 0 ; i--){
-		CP_ref_ini.col(i) = ZMP_ref.col(i) + exp(-1.0*omega*num_time) * (CP_ref_end.col(i) - ZMP_ref.col(i));
+	double num_time = limit_time * (double)step;
+	double wTi;
+	int i = step - 1;
+	CP_ref_end.col(i) = ZMP_ref.col(i);
+	while(ros::ok()){
+		wTi = -1.0 * omega * num_time;
+		CP_ref_ini.col(i) = ZMP_ref.col(i) + exp(wTi) * (CP_ref_end.col(i) - ZMP_ref.col(i));
+		if(i == 0)break;
 		CP_ref_end.col(i-1) = CP_ref_ini.col(i);
-		num_time = num_time - (double)limit_time;
-		// std::cout << "CP_ref_ini = \n"<< CP_ref_ini.col(i) << std::endl;
+		// std::cout << "wTi = "<< wTi << std::endl;
+		// std::cout << "omega = "<< omega << std::endl;
 		// std::cout << "num_time = "<< num_time << std::endl;
+		// std::cout << "CP_ref_ini = \n"<< CP_ref_ini.col(i) << std::endl;
+		// std::cout << "CP_ref_end = \n"<< CP_ref_end.col(i) << std::endl;
+		num_time = num_time - limit_time;
+		i--;
 	}
-	CP_ref_ini.col(0) = ZMP_ref.col(0) + exp(-1*omega*num_time) * (CP_ref_ini.col(0) - ZMP_ref.col(0));
-	ROS_INFO("[WPG] Set Reference Capture Point");
-	// std::cout << "CP_ref_ini = \n"<< CP_ref_ini.col(0) << std::endl;
+	// std::cout << "wTi = "<< wTi << std::endl;
+	// std::cout << "omega = "<< omega << std::endl;
 	// std::cout << "num_time = "<< num_time << std::endl;
+	// std::cout << "CP_ref_ini = \n"<< CP_ref_ini.col(i) << std::endl;
+	// std::cout << "CP_ref_end = \n"<< CP_ref_end.col(i) << std::endl;
 
 	// 基準CP軌道の設計
+	ROS_INFO("[WPG] Set Reference Capture Point Load");
 	double base_time = ros::Time::now().toSec();
 	double time = 0.0;
-	int data_count = (step-1) * (int)division;
+	double wti;
+	int data_count = (step-1) * division;
 	MatrixXd CP_ref_ti(3,data_count);
 	ROS_INFO("[WPG] data_count = %d",data_count);
 	int s = 0;
@@ -108,15 +120,18 @@ int main(int argc, char *argv[]){
 	ros::Rate loop_rate(Hz);
 	for(i=0 ; i<(step-1) ; i++){
 		for (j=0 ; j<division ; j++){
-			CP_ref_ti.col(s) = ZMP_ref.col(i) + (exp(omega*time) * (CP_ref_ini.col(i) - ZMP_ref.col(i)));
+			wti = omega * time * 1.0;
+			CP_ref_ti.col(s) = ZMP_ref.col(i) + (exp(wti) * (CP_ref_ini.col(i) - ZMP_ref.col(i)));
 			loop_rate.sleep();
-			double time = ros::Time::now().toSec() - base_time;
-			// ROS_INFO("[debag] %d-%d,(%d)",i,j,s);
+			time = ros::Time::now().toSec() - base_time;
+			// ROS_INFO("[WPG] %d-%d(%d)",i,j,s);
+			// std::cout << "wti = "<< wti << std::endl;
+			// std::cout << "omega = "<< omega << std::endl;
+			// std::cout << "time = "<< time << std::endl;
 			// std::cout << "CP_ref_ti = \n"<< CP_ref_ti.col(s) << std::endl;
 			s++;
 		}
 	}
-	ROS_INFO("[WPG] Set Reference Capture Point Load");
 
 	// 基準ZMP間をつなぐ遊脚の足先軌道を生成
 	MatrixXd Free_Leg_position = MatrixXd::Zero(3,data_count);
@@ -125,9 +140,9 @@ int main(int argc, char *argv[]){
 	j = 1;
 	Vector3d start_position = Free_Leg_position.col(0);
 	Vector3d end_position = ZMP_ref.col(2);
-	double dx = (end_position(0) - start_position(0)) / (2*division);
-	double dy = (end_position(1) - start_position(1)) / (2*division);
-	double dz = 0.01/division;
+	double dx = (end_position(0) - start_position(0)) / (2.0*(double)division);
+	double dy = (end_position(1) - start_position(1)) / (2.0*(double)division);
+	double dz = 0.02/(double)division;
 	for(i=1 ; i<(2*division) ; i++){
 		Free_Leg_position(0,j) += dx;
 		Free_Leg_position(1,j) += dy;
@@ -140,9 +155,9 @@ int main(int argc, char *argv[]){
 	for (s=3 ; s<step ; s++){
 		start_position = ZMP_ref.col(s-2);
 		end_position = ZMP_ref.col(s);
-		dx = (end_position(0) - start_position(0)) / division;
-		dy = (end_position(1) - start_position(1)) / division;
-		dz = 0.01 / (division/2);
+		dx = (end_position(0) - start_position(0)) / (double)division;
+		dy = (end_position(1) - start_position(1)) / (double)division;
+		dz = 0.02 / ((double)division/2.0);
 		for(i=1 ; i<division ; i++){
 			Free_Leg_position(0,j) += dx;
 			Free_Leg_position(1,j) += dy;
@@ -184,7 +199,7 @@ int main(int argc, char *argv[]){
 	D(1, 0) = 0;
 
     double tt = 0.0;
-	double dt = (double)limit_time/(double)division;
+	double dt = limit_time/(double)division;
     MatrixXd X(2, 1);
     X(0, 0) = 0;
     X(1, 0) = 0;
@@ -228,7 +243,7 @@ int main(int argc, char *argv[]){
 		// ZMP_des.col(i) = ZMP_ref.col(s) + ( (1.0 + (K/omega)) * ( sub_real_CP - CP_ref_ti.col(i-1) ) );
 
 		// CPの誤差を修正する所望のZMP(LIP model 使用)
-		ZMP_des.col(i) = ZMP_ref.col(s) + ( ( 1.0 + ( (double)K / omega ) ) * ( LIP_CP.col(i-1) - CP_ref_ti.col(i-1) ) );
+		ZMP_des.col(i) = ZMP_ref.col(s) + ( ( 1.0 + ( K/omega ) ) * ( LIP_CP.col(i-1) - CP_ref_ti.col(i-1) ) );
 
 		std::cout << "ZMP_des = \n"<< ZMP_des.col(i-1) << std::endl;
 		std::cout << "ZMP_ref = \n"<< ZMP_ref.col(s) << std::endl;
