@@ -140,34 +140,35 @@ int main(int argc, char *argv[]){
 	MatrixXd Free_Leg_position = MatrixXd::Zero(3,data_count);
 	Free_Leg_position.col(0) = Left_foot_init_position; //左足先の初期位置
 	// 最初の一歩目
+	ROS_INFO("[WPG] Set Free Leg Load (1)");
 	Vector3d start_position = Free_Leg_position.col(0);
 	Vector3d end_position = ZMP_ref.col(2);
-	std::cout << "start_position :(0)\n" << start_position <<std::endl;
-	std::cout << "end_position :(2)\n" << end_position <<std::endl;
+	// std::cout << "start_position :(0)\n" << start_position <<std::endl;
+	// std::cout << "end_position :(2)\n" << end_position <<std::endl;
 	double dx = (end_position(0) - start_position(0)) / (2.0*(double)division);
 	double dy = (end_position(1) - start_position(1)) / (2.0*(double)division);
 	double dz = 0.02/(double)division;
-	ROS_INFO("dx= %lf : dy= %lf : dz= %lf",dx,dy,dz);
+	// ROS_INFO("dx= %lf : dy= %lf : dz= %lf",dx,dy,dz);
 	j = 1;
 	for(i=1 ; i<(2*division) ; i++){
 		Free_Leg_position(0,j) = Free_Leg_position(0,j-1) + dx;
 		Free_Leg_position(1,j) = Free_Leg_position(1,j-1) + dy;
 		if( i<division ) Free_Leg_position(2,j) = Free_Leg_position(2,j-1) + dz;
 		else if( i>=division ) Free_Leg_position(2,j) = Free_Leg_position(2,j-1) - dz;
-		std::cout << "Free leg Position ("<< j << ") = \n"<< Free_Leg_position.col(j) <<std::endl;
+		// std::cout << "Free leg Position ("<< j << ") = \n"<< Free_Leg_position.col(j) <<std::endl;
 		j++;
 	}
-	ROS_INFO("[WPG] Set Free Leg Load (1)");
 	// 2歩目以降
+	ROS_INFO("[WPG] Set Free Leg Load (2~)");
 	for (s=3 ; s<step ; s++){
 		start_position = ZMP_ref.col(s-2);
 		end_position = ZMP_ref.col(s);
-		std::cout << "start_position : " << s-2 << " \n" << start_position <<std::endl;
-		std::cout << "end_position : " << s << " \n" << end_position <<std::endl;
+		// std::cout << "start_position : " << s-2 << " \n" << start_position <<std::endl;
+		// std::cout << "end_position : " << s << " \n" << end_position <<std::endl;
 		dx = (end_position(0) - start_position(0)) / (double)division;
 		dy = (end_position(1) - start_position(1)) / (double)division;
 		dz = 0.02 / ((double)division/2.0);
-		ROS_INFO("dx= %lf : dy= %lf : dz= %lf",dx,dy,dz);
+		// ROS_INFO("dx= %lf : dy= %lf : dz= %lf",dx,dy,dz);
 		Free_Leg_position.col(j) = start_position;
 		j++;
 		for(i=1 ; i<division ; i++){
@@ -175,11 +176,10 @@ int main(int argc, char *argv[]){
 			Free_Leg_position(1,j) = Free_Leg_position(1,j-1) + dy;
 			if( i<(division/2) ) Free_Leg_position(2,j) = Free_Leg_position(2,j-1) + dz;
 			else if( i>=(division/2) ) Free_Leg_position(2,j) = Free_Leg_position(2,j-1) - dz;
-			std::cout << "Free leg Position ("<< s << "-"<< i <<"-"<< j << ") =\n"<< Free_Leg_position.col(j) <<std::endl;
+			// std::cout << "Free leg Position ("<< s << "-"<< i <<"-"<< j << ") =\n"<< Free_Leg_position.col(j) <<std::endl;
 			j++;
 		}
 	}
-	ROS_INFO("[WPG] Set Free Leg Load (2~)");
 	
 	// CPの誤差を修正するZMPの計算と左右脚の目標を配信
 	MatrixXd ZMP_des = MatrixXd::Zero(3,data_count);

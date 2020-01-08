@@ -2,7 +2,7 @@
 <!-- arguments -->
 <arg name="model" default="$(find pwr_v2_description)/xacro/pwr_v2.xacro"/>
 <arg name="gui" default="true" />
-<arg name="timeout" default="0.005" />
+<arg name="timeout" default="0.015" />
 <arg name="rvizconfig" default="$(find pwr_v2_walking_pattern_generator)/launch/config/rviz.rviz" />
 <!-- rviz -->
 <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rvizconfig)" required="true" />
@@ -15,5 +15,5 @@
     <param name="urdf_param" value="/robot_description"/>
 </node>
 <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" /> 
-<!-- <node name="pwr_v2_walking_pattern_generator_node" pkg="pwr_v2_walking_pattern_generator" type="pwr_v2_walking_pattern_generator_node" output="screen"/> -->
+<node name="pwr_v2_walking_pattern_generator_node" pkg="pwr_v2_walking_pattern_generator" type="pwr_v2_walking_pattern_generator_node" output="screen"/>
 </launch>
