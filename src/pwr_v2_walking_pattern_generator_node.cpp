@@ -22,7 +22,7 @@ using namespace Eigen;
 
 #define G 9.805					// 重力加速度
 #define K 1.0					// ゲイン
-#define CoM_HEIGHT 0.230		// 重心の高さ
+#define CoM_HEIGHT 0.280		// 重心の高さ
 int step = 5;					// 基準ZMPの数
 int division = 100;				// 一歩あたりの分割数
 double limit_time = 1.0;		// 一歩あたりの計算時間（sec）
@@ -71,9 +71,12 @@ int main(int argc, char *argv[]){
 	
 	// 基準ZMPの設定
 	MatrixXd ZMP_ref(3,step);	// 基準ZMP
-	ZMP_ref <<  0.00, 0.00, 0.12, 0.24, 0.36,
-				0.00,-0.033, 0.033,-0.033, 0.033,
-				0.00, 0.00, 0.00, 0.00, 0.00;
+	 ZMP_ref <<	0.0, 0.00, 0.12, 0.24, 0.36,
+ 				0.0,-0.03, 0.03,-0.03, 0.03,
+	 			0.0, 0.00, 0.00, 0.00, 0.00;
+//	ZMP_ref <<  0.0, 0.00, 0.12, 0.24, 0.36, 0.48, 0.60,
+//				0.0,-0.03, 0.03,-0.03, 0.03,-0.03, 0.03,
+//				0.0, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00;
 
 	double omega = sqrt(G/CoM_HEIGHT);					// 角速度
 	double Hz = 1 / (limit_time / (double)division);	// ループ周期
