@@ -10,12 +10,11 @@
 <param name="robot_description" command="$(find xacro)/xacro $(arg model) --inorder"/>
 <param name="use_gui" value="$(arg gui)"/>
 <!-- nodes -->
-<node name="pwr_v2_inverse_kinematics_node" pkg="pwr_v2_inverse_kinematics" type="pwr_v2_inverse_kinematics_node">
+<node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" /> 
+<node name="pwr_v2_walking_pattern_generator_node" pkg="pwr_v2_walking_pattern_generator" type="pwr_v2_walking_pattern_generator_node" output="screen">
     <param name="timeout" value="$(arg timeout)"/>
     <param name="urdf_param" value="/robot_description"/>
 </node>
-<node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" /> 
-<node name="pwr_v2_walking_pattern_generator_node" pkg="pwr_v2_walking_pattern_generator" type="pwr_v2_walking_pattern_generator_node"/>
 <node name="pwr_v2_dynamixel_control_node" pkg="pwr_v2_dynamixel_control" type="pwr_v2_dynamixel_control" output="screen"/>
 
 </launch>
