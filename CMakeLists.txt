@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.3)
 project(pwr_v2_walking_pattern_generator)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
-# add_compile_options(-std=c++11)
+add_compile_options(-std=c++11)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -12,13 +12,15 @@ find_package(
     roscpp
     geometry_msgs
     sensor_msgs
+    trac_ik_lib
     std_msgs
     tf
 )
 
 ## System dependencies are found with CMake's conventions
 find_package(Boost REQUIRED COMPONENTS system)
-
+find_package(Boost REQUIRED COMPONENTS date_time)
+find_package(orocos_kdl REQUIRED)
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -108,7 +110,15 @@ find_package(Boost REQUIRED COMPONENTS system)
 catkin_package(
  INCLUDE_DIRS include
 #  LIBRARIES pwr_v2_walking_pattern_generator
- CATKIN_DEPENDS roscpp geometry_msgs std_msgs sensor_msgs
+ CATKIN_DEPENDS
+  roscpp
+  geometry_msgs
+  std_msgs
+  sensor_msgs
+  trac_ik_lib
+ DEPENDS
+  Boost
+  orocos_kdl
 #  DEPENDS system_lib
 )
 
@@ -121,6 +131,8 @@ catkin_package(
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
+  ${Boost_INCLUDE_DIRS}
+  ${orocos_kdl_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -158,6 +170,8 @@ add_executable(
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
+  ${Boost_LIBRARIES}
+  ${orocos_kdl_LIBRARIES}
 )
 
 #############
@@ -182,11 +196,11 @@ target_link_libraries(${PROJECT_NAME}_node
 
 ## Mark libraries for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_libraries.html
-# install(TARGETS ${PROJECT_NAME}
-#   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-#   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-#   RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}
-# )
+install(TARGETS ${PROJECT_NAME}_node
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}
+)
 
 ## Mark cpp header files for installation
 # install(DIRECTORY include/${PROJECT_NAME}/
@@ -201,6 +215,9 @@ target_link_libraries(${PROJECT_NAME}_node
 #   # myfile2
 #   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 # )
+install(DIRECTORY launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+)
 
 #############
 ## Testing ##

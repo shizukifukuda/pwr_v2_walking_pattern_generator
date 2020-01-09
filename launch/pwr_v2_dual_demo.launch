@@ -3,6 +3,9 @@
 <arg name="model" default="$(find pwr_v2_description)/xacro/pwr_v2.xacro"/>
 <arg name="gui" default="true" />
 <arg name="timeout" default="0.005" />
+<arg name="rvizconfig" default="$(find pwr_v2_walking_pattern_generator)/launch/config/rviz.rviz" />
+<!-- rviz -->
+<node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rvizconfig)" required="true" />
 <!-- prameters -->
 <param name="robot_description" command="$(find xacro)/xacro $(arg model) --inorder"/>
 <param name="use_gui" value="$(arg gui)"/>
