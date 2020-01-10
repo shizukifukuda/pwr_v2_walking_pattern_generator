@@ -8,7 +8,7 @@
 <param name="use_gui" value="$(arg gui)"/>
 <!-- nodes -->
 <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" /> 
-<node name="pwr_v2_walking_pattern_generator_node" pkg="pwr_v2_walking_pattern_generator" type="pwr_v2_walking_pattern_generator_node" output="screen" >
+<node name="pwr_v2_walking_pattern_generator_node" pkg="pwr_v2_walking_pattern_generator" type="pwr_v2_walking_pattern_generator_node" output="screen" required="true">
     <param name="timeout" value="$(arg timeout)"/>
     <param name="urdf_param" value="/robot_description"/>
 </node>

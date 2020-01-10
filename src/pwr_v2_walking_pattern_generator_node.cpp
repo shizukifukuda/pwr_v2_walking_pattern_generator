@@ -29,13 +29,13 @@ using namespace Eigen;
 #define _USE_MATH_DEFINES
 int step = 7;					// 基準ZMPの数
 int division = 100;				// 一歩あたりの分割数
-double limit_time = 2.0;		// 一歩あたりの計算時間（sec）
+double limit_time = 1.0;		// 一歩あたりの計算時間（sec）
 
-Vector3d Left_foot_init_position(0.0, 0.033, 0.0);		//左足先の初期位置
-Vector3d Right_foot_init_position(0.0, -0.033, 0.0);	//右足先の初期位置
+Vector3d Left_foot_init_position(0.0, 0.04, 0.0);		//左足先の初期位置
+Vector3d Right_foot_init_position(0.0, -0.04, 0.0);	//右足先の初期位置
 
 float joint_angle[10];
-void IK_solver(ros::NodeHandle& nh, std::string chain_start, std::string chain_end, double timeout, std::string urdf_param, double eps, std::string select_leg, double x, double y, double z){
+void IK_solver(ros::NodeHandle& nh, std::string chain_start, std::string chain_end, double timeout, std::string urdf_param, double eps, std::string select_leg, Vector3d position){
 	float joint_state[5];
 	//このコンストラクタは、rosparm urdf_paramにロードされたURDFを必要なKDL構造に解析します。 
 	TRAC_IK::TRAC_IK IK_solver(chain_start, chain_end, urdf_param, timeout, eps);
@@ -66,9 +66,9 @@ void IK_solver(ros::NodeHandle& nh, std::string chain_start, std::string chain_e
 	double EuZ=0.0, EuY=0.0, EuX=0.0;
 	KDL::Rotation eep_Rotation = eep_Rotation.EulerZYX(EuZ,EuY,EuX); //回転行列
 	KDL::Vector eep_Vector; //位置ベクトル
-	eep_Vector.x(x);  //位置の目標値を各要素に代入
-	eep_Vector.y(y);
-	eep_Vector.z(z);
+	eep_Vector.x(position(0));  //位置の目標値を各要素に代入
+	eep_Vector.y(position(1));
+	eep_Vector.z(position(2));
 	KDL::Frame end_effector_pose(eep_Rotation,eep_Vector); //目標の姿勢行列
 
 	KDL::JntArray result; //逆運動学により求まる関節角の計算結果
@@ -138,15 +138,13 @@ sensor_msgs::JointState joint_state_publisher(float *joint_state, ros::Time time
 }
 
 Vector3d sub_real_CP;
-void Sub_real_CP_Callback(const geometry_msgs::PointStamped &real_CP)
-{
+void Sub_real_CP_Callback(const geometry_msgs::PointStamped &real_CP){
 	sub_real_CP(0) = real_CP.point.x;
 	sub_real_CP(1) = real_CP.point.y;
 	sub_real_CP(2) = real_CP.point.z;
 }
 
-geometry_msgs::PointStamped setPoint(Vector3d position, int seq, ros::Time stamp_time, std::string name)
-{
+geometry_msgs::PointStamped setPoint(Vector3d position, int seq, ros::Time stamp_time, std::string name){
 	geometry_msgs::PointStamped ps;
 		ps.header.seq = seq;
 		ps.header.stamp = stamp_time;
@@ -188,7 +186,7 @@ int main(int argc, char *argv[]){
 
 	// ros::Subscriber real_CP_position_sub = nh.subscribe("pwr_v2_Capture_point",10,Sub_real_CP_Callback);
 	
-	ros::Publisher joint_states_pub = nh.advertise<sensor_msgs::JointState>("joint_states",10);
+	ros::Publisher joint_states_pub = nh.advertise<sensor_msgs::JointState>("joint_states",100);
 	// ros::Publisher leg_mode_pub = nh.advertise<std_msgs::Float64>("leg_mode",10);
 	// ros::Publisher left_foot_position_pub = nh.advertise<geometry_msgs::PointStamped>("left_foot_point",10);
 	// ros::Publisher right_foot_position_pub = nh.advertise<geometry_msgs::PointStamped>("right_foot_point",10);
@@ -196,11 +194,8 @@ int main(int argc, char *argv[]){
 	
 	// 基準ZMPの設定
 	MatrixXd ZMP_ref(3,step);	// 基準ZMP
-//  ZMP_ref <<	0.0, 0.000, 0.060, 0.120, 0.180,
-//	 			0.0,-0.033, 0.033,-0.033, 0.033,
-//  			0.0, 0.000, 0.000, 0.000, 0.000;
-	ZMP_ref <<  0.0, 0.000, 0.060, 0.120, 0.180, 0.240, 0.300,
-				0.0,-0.033, 0.033,-0.033, 0.033,-0.033, 0.033,
+	ZMP_ref <<  0.0, 0.000, 0.070, 0.140, 0.210, 0.280, 0.350,
+				0.0,-0.040, 0.040,-0.040, 0.040,-0.040, 0.040,
 				0.0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000;
 
 	double omega = sqrt(G/CoM_HEIGHT);					// 角速度
@@ -212,10 +207,11 @@ int main(int argc, char *argv[]){
 	ROS_INFO("[WPG] Set Reference Capture Point");
 	MatrixXd CP_ref_ini(3,step);	// 基準CP開始点
 	MatrixXd CP_ref_end(3,step);	// 基準CP終点
-	double num_time = limit_time * (double)step;
+	double num_time = limit_time * (double)step-1;
 	double wTi;
 	int i = step - 1;
-	CP_ref_end.col(i) = ZMP_ref.col(i);
+	CP_ref_end.col(i-1) = ZMP_ref.col(i);
+	i--;
 	while(ros::ok()){
 		wTi = -1.0 * omega * num_time;
 		CP_ref_ini.col(i) = ZMP_ref.col(i) + exp(wTi) * (CP_ref_end.col(i) - ZMP_ref.col(i));
@@ -232,8 +228,8 @@ int main(int argc, char *argv[]){
 	// std::cout << "wTi = "<< wTi << std::endl;
 	// std::cout << "omega = "<< omega << std::endl;
 	// std::cout << "num_time = "<< num_time << std::endl;
-	// std::cout << "CP_ref_ini = \n"<< CP_ref_ini.col(i) << std::endl;
-	// std::cout << "CP_ref_end = \n"<< CP_ref_end.col(i) << std::endl;
+	// std::cout << "CP_ref_ini = \n"<< CP_ref_ini << std::endl;
+	// std::cout << "CP_ref_end = \n"<< CP_ref_end << std::endl;
 
 	// 基準CP軌道の設計
 	ROS_INFO("[WPG] Set Reference Capture Point Load");
@@ -246,18 +242,20 @@ int main(int argc, char *argv[]){
 	int s = 0;
 	int j;
 	ros::Rate loop_rate(Hz);
+	loop_rate.sleep();
 	for(i=0 ; i<(step-1) ; i++){
 		for (j=0 ; j<division ; j++){
-			wti = omega * time * 1.0;
+			wti = omega * time;
 			CP_ref_ti.col(s) = ZMP_ref.col(i) + (exp(wti) * (CP_ref_ini.col(i) - ZMP_ref.col(i)));
-			loop_rate.sleep();
-			time = ros::Time::now().toSec() - base_time;
 			// ROS_INFO("[WPG] %d-%d(%d)",i,j,s);
 			// std::cout << "wti = "<< wti << std::endl;
 			// std::cout << "omega = "<< omega << std::endl;
 			// std::cout << "time = "<< time << std::endl;
+			// std::cout << "CP_ref_ini = \n"<< CP_ref_ini.col(i) << std::endl;
 			// std::cout << "CP_ref_ti = \n"<< CP_ref_ti.col(s) << std::endl;
 			s++;
+			time = ros::Time::now().toSec() - base_time;
+			loop_rate.sleep();
 		}
 	}
 
@@ -272,7 +270,7 @@ int main(int argc, char *argv[]){
 	// std::cout << "end_position :(2)\n" << end_position <<std::endl;
 	double dx = (end_position(0) - start_position(0)) / (2.0*(double)division);
 	double dy = (end_position(1) - start_position(1)) / (2.0*(double)division);
-	double dz = 0.02/(double)division;
+	double dz = 0.03/(double)division;
 	// ROS_INFO("dx= %lf : dy= %lf : dz= %lf",dx,dy,dz);
 	j = 1;
 	for(i=1 ; i<(2*division) ; i++){
@@ -292,7 +290,7 @@ int main(int argc, char *argv[]){
 		// std::cout << "end_position : " << s << " \n" << end_position <<std::endl;
 		dx = (end_position(0) - start_position(0)) / (double)division;
 		dy = (end_position(1) - start_position(1)) / (double)division;
-		dz = 0.02 / ((double)division/2.0);
+		dz = 0.03 / ((double)division/2.0);
 		// ROS_INFO("dx= %lf : dy= %lf : dz= %lf",dx,dy,dz);
 		Free_Leg_position.col(j) = start_position;
 		j++;
@@ -357,7 +355,7 @@ int main(int argc, char *argv[]){
 	Yy(1, 0) = 0;
 
 	std::ofstream fout("/home/shizuki/SynologyDrive/大学/修士論文/record/check.csv");
-	fout << "UNIX_time[sec],CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,CoM_position_x,CoM_positon_y,CP_LIP_x,CP_LIP_y" << std::endl;
+	fout << "time,seq,CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,CoM_position_x,CoM_positon_y,CP_LIP_x,CP_LIP_y" << std::endl;
 
 	s = 0;
 	i = 1;
@@ -389,26 +387,26 @@ int main(int argc, char *argv[]){
 		
 		if(i<=division){
 			ROS_INFO("[IK]Sup:Right / Free:Left");
-			IK_solver(nh, "Right_link_foot", "waist", timeout, urdf_param, eps, "s_right", LIP_CoM_pos(0,i-1)-Right_foot_init_position(0) ,LIP_CoM_pos(1,i-1)-Right_foot_init_position(1), LIP_CoM_pos(2,i-1)-Right_foot_init_position(2));
-			IK_solver(nh, "waist", "Left_link_foot", timeout, urdf_param, eps, "f_left", Free_Leg_position(0,i-1)-LIP_CoM_pos(0,i-1), Free_Leg_position(1,i-1)-LIP_CoM_pos(1,i-1), Free_Leg_position(2,i-1)-LIP_CoM_pos(2,i-1));
+			IK_solver(nh, "Right_link_foot", "waist", timeout, urdf_param, eps, "s_right", LIP_CoM_pos.col(i-1)-Right_foot_init_position);
+			IK_solver(nh, "waist", "Left_link_foot", timeout, urdf_param, eps, "f_left", Free_Leg_position.col(i-1)-LIP_CoM_pos.col(i-1));
 			right_foot_msg = setPoint(Right_foot_init_position ,i-1,TIME,"Right_Foot");
 			left_foot_msg = setPoint(Free_Leg_position.col(i-1),i-1,TIME, "Left_Foot");
 		}
 		// Sup:Right / Free:Left
 		else if(leg_mode_msg.data==1.0 && i>division){
 			ROS_INFO("[IK]Sup:Right / Free:Left");
-			IK_solver(nh, "Right_link_foot", "waist", timeout, urdf_param, eps, "s_right", LIP_CoM_pos(0,i-1)-ZMP_des(0,i-1) ,LIP_CoM_pos(1,i-1)-ZMP_des(1,i-1), LIP_CoM_pos(2,i-1)-ZMP_des(2,i-1));
-			IK_solver(nh, "waist", "Left_link_foot", timeout, urdf_param, eps, "f_left", Free_Leg_position(0,i-1)-LIP_CoM_pos(0,i-1), Free_Leg_position(1,i-1)-LIP_CoM_pos(1,i-1), Free_Leg_position(2,i-1)-LIP_CoM_pos(2,i-1));
-			right_foot_msg = setPoint(ZMP_des.col(i-1),i-1,TIME,"Right_Foot");
+			IK_solver(nh, "Right_link_foot", "waist", timeout, urdf_param, eps, "s_right", LIP_CoM_pos.col(i-1)-ZMP_des.col(i-1));
+			IK_solver(nh, "waist", "Left_link_foot", timeout, urdf_param, eps, "f_left", Free_Leg_position.col(i-1)-LIP_CoM_pos.col(i-1));
+			right_foot_msg = setPoint( ZMP_ref.col(s),i-1,TIME,"Right_Foot");
 			left_foot_msg = setPoint(Free_Leg_position.col(i-1),i-1,TIME,"Left_Foot");
 		}
 		// Sup:Left / Free:Right
 		else if(leg_mode_msg.data==-1.0 && i>division){
 			ROS_INFO("[IK]Sup:Left / Free:Right");
-			IK_solver(nh, "Left_link_foot", "waist", timeout, urdf_param, eps, "s_left", LIP_CoM_pos(0,i-1)-ZMP_des(0,i-1), LIP_CoM_pos(1,i-1)-ZMP_des(1,i-1), LIP_CoM_pos(2,i-1)-ZMP_des(2,i-1));
-			IK_solver(nh, "waist", "Right_link_foot", timeout, urdf_param, eps, "f_right", Free_Leg_position(0,i-1)-LIP_CoM_pos(0,i-1), Free_Leg_position(1,i-1)-LIP_CoM_pos(1,i-1), Free_Leg_position(2,i-1)-LIP_CoM_pos(2,i-1));
+			IK_solver(nh, "Left_link_foot", "waist", timeout, urdf_param, eps, "s_left", LIP_CoM_pos.col(i-1)-ZMP_des.col(i-1));
+			IK_solver(nh, "waist", "Right_link_foot", timeout, urdf_param, eps, "f_right", Free_Leg_position.col(i-1)-LIP_CoM_pos.col(i-1));
 			right_foot_msg = setPoint(Free_Leg_position.col(i-1),i-1,TIME,"Right_Foot");
-			left_foot_msg = setPoint(ZMP_des.col(i-1),i-1,TIME,"Left_Foot");
+			left_foot_msg = setPoint(ZMP_ref.col(s),i-1,TIME,"Left_Foot");
 		}
 		
 		joint_states_pub.publish(joint_state_publisher(joint_angle, TIME));
@@ -423,8 +421,7 @@ int main(int argc, char *argv[]){
 		std::cout << right_foot_msg << std::endl;
 		std::cout << left_foot_msg << std::endl;
 		std::cout << leg_mode_msg << std::endl;
-		double time = TIME.toSec();
-		fout << time <<","<< 
+		fout << TIME.toSec() <<","<< i-1 <<","<<
 		CP_ref_ti(0,i-1) <<","<< CP_ref_ti(1,i-1) <<","<<
 		ZMP_des(0,i-1) <<","<< ZMP_des(1,i-1) <<","<< 
 		LIP_CoM_pos(0,i-1) <<","<< LIP_CoM_pos(1,i-1) <<","<<
