@@ -194,7 +194,7 @@ int main(int argc, char *argv[]){
 	
 	// 基準ZMPの設定
 	MatrixXd ZMP_ref(3,step);	// 基準ZMP
-	ZMP_ref <<  0.0, 0.000, 0.070, 0.140, 0.210, 0.280, 0.350,
+	ZMP_ref <<  0.0, 0.000, 0.060, 0.120, 0.180, 0.240, 0.300,
 				0.0,-0.040, 0.040,-0.040, 0.040,-0.040, 0.040,
 				0.0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000;
 
@@ -217,11 +217,6 @@ int main(int argc, char *argv[]){
 		CP_ref_ini.col(i) = ZMP_ref.col(i) + exp(wTi) * (CP_ref_end.col(i) - ZMP_ref.col(i));
 		if(i == 0)break;
 		CP_ref_end.col(i-1) = CP_ref_ini.col(i);
-		// std::cout << "wTi = "<< wTi << std::endl;
-		// std::cout << "omega = "<< omega << std::endl;
-		// std::cout << "num_time = "<< num_time << std::endl;
-		// std::cout << "CP_ref_ini = \n"<< CP_ref_ini.col(i) << std::endl;
-		// std::cout << "CP_ref_end = \n"<< CP_ref_end.col(i) << std::endl;
 		num_time -= limit_time;
 		i--;
 	}
@@ -252,7 +247,7 @@ int main(int argc, char *argv[]){
 			// std::cout << "omega = "<< omega << std::endl;
 			// std::cout << "time = "<< time << std::endl;
 			// std::cout << "CP_ref_ini = \n"<< CP_ref_ini.col(i) << std::endl;
-			// std::cout << "CP_ref_ti = \n"<< CP_ref_ti.col(s) << std::endl;
+			std::cout << "CP_ref_ti = \n"<< CP_ref_ti.col(s) << std::endl;
 			s++;
 			time = ros::Time::now().toSec() - base_time;
 			loop_rate.sleep();
@@ -260,24 +255,24 @@ int main(int argc, char *argv[]){
 	}
 
 	// 基準ZMP間をつなぐ遊脚の足先軌道を生成
-	MatrixXd Free_Leg_position = MatrixXd::Zero(3,data_count);
+	MatrixXd Free_Leg_position = MatrixXd::Zero(3,data_count-division);
 	Free_Leg_position.col(0) = Left_foot_init_position; //左足先の初期位置
 	// 最初の一歩目
 	ROS_INFO("[WPG] Set Free Leg Load (1)");
 	Vector3d start_position = Free_Leg_position.col(0);
 	Vector3d end_position = ZMP_ref.col(2);
-	// std::cout << "start_position :(0)\n" << start_position <<std::endl;
-	// std::cout << "end_position :(2)\n" << end_position <<std::endl;
-	double dx = (end_position(0) - start_position(0)) / (2.0*(double)division);
-	double dy = (end_position(1) - start_position(1)) / (2.0*(double)division);
-	double dz = 0.03/(double)division;
+	// std::cout << "start_position(0)\n" << start_position <<std::endl;
+	// std::cout << "end_position(2)\n" << end_position <<std::endl;
+	double dx = (end_position(0) - start_position(0)) / (double)division;
+	double dy = (end_position(1) - start_position(1)) / (double)division;
+	double dz = 0.03 / ((double)division/2.0);
 	// ROS_INFO("dx= %lf : dy= %lf : dz= %lf",dx,dy,dz);
 	j = 1;
-	for(i=1 ; i<(2*division) ; i++){
+	for(i=1 ; i<division ; i++){
 		Free_Leg_position(0,j) = Free_Leg_position(0,j-1) + dx;
 		Free_Leg_position(1,j) = Free_Leg_position(1,j-1) + dy;
-		if( i<division ) Free_Leg_position(2,j) = Free_Leg_position(2,j-1) + dz;
-		else if( i>=division ) Free_Leg_position(2,j) = Free_Leg_position(2,j-1) - dz;
+		if( i<(division/2) ) Free_Leg_position(2,j) = Free_Leg_position(2,j-1) + dz;
+		else if( i>=(division/2) ) Free_Leg_position(2,j) = Free_Leg_position(2,j-1) - dz;
 		// std::cout << "Free leg Position ("<< j << ") = \n"<< Free_Leg_position.col(j) <<std::endl;
 		j++;
 	}
@@ -290,7 +285,7 @@ int main(int argc, char *argv[]){
 		// std::cout << "end_position : " << s << " \n" << end_position <<std::endl;
 		dx = (end_position(0) - start_position(0)) / (double)division;
 		dy = (end_position(1) - start_position(1)) / (double)division;
-		dz = 0.03 / ((double)division/2.0);
+		// dz = 0.03 / ((double)division/2.0);
 		// ROS_INFO("dx= %lf : dy= %lf : dz= %lf",dx,dy,dz);
 		Free_Leg_position.col(j) = start_position;
 		j++;
@@ -359,6 +354,7 @@ int main(int argc, char *argv[]){
 
 	s = 0;
 	i = 1;
+	j = 0;
 	ros::Time TIME;
 	while(ros::ok()){
 		TIME = ros::Time::now();
@@ -388,25 +384,27 @@ int main(int argc, char *argv[]){
 		if(i<=division){
 			ROS_INFO("[IK]Sup:Right / Free:Left");
 			IK_solver(nh, "Right_link_foot", "waist", timeout, urdf_param, eps, "s_right", LIP_CoM_pos.col(i-1)-Right_foot_init_position);
-			IK_solver(nh, "waist", "Left_link_foot", timeout, urdf_param, eps, "f_left", Free_Leg_position.col(i-1)-LIP_CoM_pos.col(i-1));
+			IK_solver(nh, "waist", "Left_link_foot", timeout, urdf_param, eps, "f_left", Left_foot_init_position-LIP_CoM_pos.col(i-1));
 			right_foot_msg = setPoint(Right_foot_init_position ,i-1,TIME,"Right_Foot");
-			left_foot_msg = setPoint(Free_Leg_position.col(i-1),i-1,TIME, "Left_Foot");
+			left_foot_msg = setPoint(Left_foot_init_position,i-1,TIME, "Left_Foot");
 		}
 		// Sup:Right / Free:Left
 		else if(leg_mode_msg.data==1.0 && i>division){
 			ROS_INFO("[IK]Sup:Right / Free:Left");
 			IK_solver(nh, "Right_link_foot", "waist", timeout, urdf_param, eps, "s_right", LIP_CoM_pos.col(i-1)-ZMP_des.col(i-1));
-			IK_solver(nh, "waist", "Left_link_foot", timeout, urdf_param, eps, "f_left", Free_Leg_position.col(i-1)-LIP_CoM_pos.col(i-1));
-			right_foot_msg = setPoint( ZMP_ref.col(s),i-1,TIME,"Right_Foot");
-			left_foot_msg = setPoint(Free_Leg_position.col(i-1),i-1,TIME,"Left_Foot");
+			IK_solver(nh, "waist", "Left_link_foot", timeout, urdf_param, eps, "f_left", Free_Leg_position.col(j)-LIP_CoM_pos.col(i-1));
+			right_foot_msg = setPoint( ZMP_des.col(i-1),i-1,TIME,"Right_Foot");
+			left_foot_msg = setPoint(Free_Leg_position.col(j),i-1,TIME,"Left_Foot");
+			j++;
 		}
 		// Sup:Left / Free:Right
 		else if(leg_mode_msg.data==-1.0 && i>division){
 			ROS_INFO("[IK]Sup:Left / Free:Right");
 			IK_solver(nh, "Left_link_foot", "waist", timeout, urdf_param, eps, "s_left", LIP_CoM_pos.col(i-1)-ZMP_des.col(i-1));
-			IK_solver(nh, "waist", "Right_link_foot", timeout, urdf_param, eps, "f_right", Free_Leg_position.col(i-1)-LIP_CoM_pos.col(i-1));
-			right_foot_msg = setPoint(Free_Leg_position.col(i-1),i-1,TIME,"Right_Foot");
-			left_foot_msg = setPoint(ZMP_ref.col(s),i-1,TIME,"Left_Foot");
+			IK_solver(nh, "waist", "Right_link_foot", timeout, urdf_param, eps, "f_right", Free_Leg_position.col(j)-LIP_CoM_pos.col(i-1));
+			right_foot_msg = setPoint(Free_Leg_position.col(j),i-1,TIME,"Right_Foot");
+			left_foot_msg = setPoint(ZMP_des.col(i-1),i-1,TIME,"Left_Foot");
+			j++;
 		}
 		
 		joint_states_pub.publish(joint_state_publisher(joint_angle, TIME));
@@ -444,5 +442,6 @@ int main(int argc, char *argv[]){
 		ros::spinOnce();
 		i++;
 	}
+	ROS_INFO("[WPG] finish ");
 	return 0;
 }
