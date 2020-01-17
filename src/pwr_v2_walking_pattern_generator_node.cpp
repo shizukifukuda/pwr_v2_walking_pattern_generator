@@ -34,81 +34,6 @@ double limit_time = 1.0;		// 一歩あたりの計算時間（sec）
 Vector3d Left_foot_init_position(0.0, 0.04, 0.0);		//左足先の初期位置
 Vector3d Right_foot_init_position(0.0, -0.04, 0.0);	//右足先の初期位置
 
-float joint_angle[10];
-void IK_solver(ros::NodeHandle& nh, std::string chain_start, std::string chain_end, double timeout, std::string urdf_param, double eps, std::string select_leg, Vector3d position){
-	float joint_state[5];
-	//このコンストラクタは、rosparm urdf_paramにロードされたURDFを必要なKDL構造に解析します。 
-	TRAC_IK::TRAC_IK IK_solver(chain_start, chain_end, urdf_param, timeout, eps);
-	KDL::Chain chain;
-	KDL::JntArray ll, ul; //lower joint limits(下限関節角), upper joint limits(上限間節角)
-	 
-	bool valid = IK_solver.getKDLChain(chain);
-	if (!valid) {
-		ROS_ERROR("[IK]There was no valid KDL chain found");//有効なKDLチェーンが見つかりませんでした
-		return;
-	}
-	valid = IK_solver.getKDLLimits(ll,ul);
-	if (!valid) {
-		ROS_ERROR("[IK]There were no valid KDL joint limits found");//有効なKDL関節限度が見つかりませんでした
-		return;
-	}
-	
-	//関節の限度が問題ないかのチェック
-	assert(chain.getNrOfJoints() == ll.data.size());
-	assert(chain.getNrOfJoints() == ul.data.size());
-	// すべての関節限界の中間に名目上のチェーン構成を作成する
-	KDL::JntArray nominal(chain.getNrOfJoints());
-	for (uint j=0; j<nominal.data.size(); j++) {
-		nominal(j) = (ll(j)+ul(j))/2.0;
-	}
-
-	//目標値の設定
-	double EuZ=0.0, EuY=0.0, EuX=0.0;
-	KDL::Rotation eep_Rotation = eep_Rotation.EulerZYX(EuZ,EuY,EuX); //回転行列
-	KDL::Vector eep_Vector; //位置ベクトル
-	eep_Vector.x(position(0));  //位置の目標値を各要素に代入
-	eep_Vector.y(position(1));
-	eep_Vector.z(position(2));
-	KDL::Frame end_effector_pose(eep_Rotation,eep_Vector); //目標の姿勢行列
-
-	KDL::JntArray result; //逆運動学により求まる関節角の計算結果
-	int rc = IK_solver.CartToJnt(nominal,end_effector_pose,result);
-	if(rc>=0){
-		ROS_INFO("[IK]%s IK is Success!",select_leg.c_str());
-	}else{
-		ROS_ERROR("[IK]%s IK is Error (rc = %d)",select_leg.c_str(),rc);
-		ROS_ERROR("[IK]Calculation is not possible with that target value");
-		return;
-	}
-
-	if(select_leg == "s_left"){
-		joint_angle[0] = result.operator()(0,0);
-		joint_angle[1] = result.operator()(1,0);
-		joint_angle[2] = result.operator()(2,0);
-		joint_angle[3] = result.operator()(3,0);
-		joint_angle[4] = result.operator()(4,0);
-	}else if(select_leg == "f_right"){
-		joint_angle[9] = result.operator()(0,0);
-		joint_angle[8] = result.operator()(1,0);
-		joint_angle[7] = result.operator()(2,0);
-		joint_angle[6] = result.operator()(3,0);
-		joint_angle[5] = result.operator()(4,0);
-	}else if(select_leg == "f_left"){
-		joint_angle[4] = result.operator()(0,0);
-		joint_angle[3] = result.operator()(1,0);
-		joint_angle[2] = result.operator()(2,0);
-		joint_angle[1] = result.operator()(3,0);
-		joint_angle[0] = result.operator()(4,0);
-	}else if(select_leg == "s_right"){
-		joint_angle[5] = result.operator()(0,0);
-		joint_angle[6] = result.operator()(1,0);
-		joint_angle[7] = result.operator()(2,0);
-		joint_angle[8] = result.operator()(3,0);
-		joint_angle[9] = result.operator()(4,0);
-	}
-	return;
-}
-
 sensor_msgs::JointState joint_state_publisher(float *joint_state, ros::Time time){
 	sensor_msgs::JointState js;
 	js.header.stamp = time;
@@ -137,11 +62,17 @@ sensor_msgs::JointState joint_state_publisher(float *joint_state, ros::Time time
 	return js;
 }
 
-Vector3d sub_real_CP;
-void Sub_real_CP_Callback(const geometry_msgs::PointStamped &real_CP){
-	sub_real_CP(0) = real_CP.point.x;
-	sub_real_CP(1) = real_CP.point.y;
-	sub_real_CP(2) = real_CP.point.z;
+Vector3d sub_real_CoM;
+void Sub_real_CoM_Callback(const geometry_msgs::PointStamped &real_CoM){
+	sub_real_CoM(0) = real_CoM.point.x;
+	sub_real_CoM(1) = real_CoM.point.y;
+	sub_real_CoM(2) = real_CoM.point.z;
+}
+// Low Path Filter
+Vector3d LP_Filter(double rc, double ts, Vector3d f_x1, Vector3d f_x2){
+	Vector3d LP_fx;
+	double alpha = (1/rc) / ((1/ts) + (1/rc));
+	return LP_fx = alpha * f_x2 + (1 - alpha) * f_x1;
 }
 
 geometry_msgs::PointStamped setPoint(Vector3d position, int seq, ros::Time stamp_time, std::string name){
@@ -174,17 +105,173 @@ MatrixXd RungeKutta(MatrixXd dX, MatrixXd X, MatrixXd u, double tt, double dt, M
     return X = X + k;
 }
 
+float joint_angle[10];
+void IK_solver(ros::NodeHandle& nh, std::string select_leg, Vector3d position, std::string urdf_param, double timeout, double eps){
+	KDL::Chain chain;
+	KDL::JntArray ll, ul; //lower joint limits(下限関節角), upper joint limits(上限間節角)
+	bool valid;
+
+	//目標値の設定
+	int rc;
+	double EuZ=0.0, EuY=0.0, EuX=0.0;
+	KDL::Rotation eep_Rotation = eep_Rotation.EulerZYX(EuZ,EuY,EuX); //回転行列
+	KDL::Vector eep_Vector; //位置ベクトル
+	eep_Vector.x(position(0));  //位置の目標値を各要素に代入
+	eep_Vector.y(position(1));
+	eep_Vector.z(position(2));
+	KDL::Frame end_effector_pose(eep_Rotation,eep_Vector); //目標の姿勢行列
+	KDL::JntArray result; //逆運動学により求まる関節角の計算結果
+
+	if(select_leg == "s_left"){
+		ROS_INFO("s_left_ik_solver");
+		TRAC_IK::TRAC_IK s_left_IK_solver("Left_link_foot", "waist", urdf_param, timeout, eps);
+		valid = s_left_IK_solver.getKDLChain(chain);
+		if (!valid) {
+			ROS_ERROR("[IK]There was no valid KDL chain found");//有効なKDLチェーンが見つかりませんでした
+			return;
+		}
+		valid = s_left_IK_solver.getKDLLimits(ll,ul);
+		if (!valid) {
+			ROS_ERROR("[IK]There were no valid KDL joint limits found");//有効なKDL関節限度が見つかりませんでした
+			return;
+		}
+		//関節の限度が問題ないかのチェック
+		assert(chain.getNrOfJoints() == ll.data.size());
+		assert(chain.getNrOfJoints() == ul.data.size());
+		// すべての関節限界の中間に名目上のチェーン構成を作成する
+		KDL::JntArray s_left_nominal(chain.getNrOfJoints());
+		for (uint j=0; j<s_left_nominal.data.size(); j++) {
+			s_left_nominal(j) = (ll(j)+ul(j))/2.0;
+		}
+		rc = s_left_IK_solver.CartToJnt(s_left_nominal,end_effector_pose,result);
+		if(rc>=0){
+			ROS_INFO("[IK]%s IK is Success!",select_leg.c_str());
+		}else{
+			ROS_ERROR("[IK]%s IK is Error (rc = %d)",select_leg.c_str(),rc);
+			ROS_ERROR("[IK]Calculation is not possible with that target value");
+			return;
+		}
+		joint_angle[0] = result.operator()(0,0);
+		joint_angle[1] = result.operator()(1,0);
+		joint_angle[2] = result.operator()(2,0);
+		joint_angle[3] = result.operator()(3,0);
+		joint_angle[4] = result.operator()(4,0);
+	}else if(select_leg == "f_right"){
+		ROS_INFO("f_right_ik_solver");
+		TRAC_IK::TRAC_IK f_right_IK_solver("waist", "Right_link_foot", urdf_param, timeout, eps);
+		valid = f_right_IK_solver.getKDLChain(chain);
+		if (!valid) {
+			ROS_ERROR("[IK]There was no valid KDL chain found");//有効なKDLチェーンが見つかりませんでした
+			return;
+		}
+		valid = f_right_IK_solver.getKDLLimits(ll,ul);
+		if (!valid) {
+			ROS_ERROR("[IK]There were no valid KDL joint limits found");//有効なKDL関節限度が見つかりませんでした
+			return;
+		}
+		//関節の限度が問題ないかのチェック
+		assert(chain.getNrOfJoints() == ll.data.size());
+		assert(chain.getNrOfJoints() == ul.data.size());
+		// すべての関節限界の中間に名目上のチェーン構成を作成する
+		KDL::JntArray f_right_nominal(chain.getNrOfJoints());
+		for (uint j=0; j<f_right_nominal.data.size(); j++) {
+			f_right_nominal(j) = (ll(j)+ul(j))/2.0;
+		}
+		rc = f_right_IK_solver.CartToJnt(f_right_nominal,end_effector_pose,result);
+		if(rc>=0){
+			ROS_INFO("[IK]%s IK is Success!",select_leg.c_str());
+		}else{
+			ROS_ERROR("[IK]%s IK is Error (rc = %d)",select_leg.c_str(),rc);
+			ROS_ERROR("[IK]Calculation is not possible with that target value");
+			return;
+		}
+		joint_angle[9] = result.operator()(0,0);
+		joint_angle[8] = result.operator()(1,0);
+		joint_angle[7] = result.operator()(2,0);
+		joint_angle[6] = result.operator()(3,0);
+		joint_angle[5] = result.operator()(4,0);
+	}else if(select_leg == "f_left"){
+		ROS_INFO("f_left_ik_solver");
+		TRAC_IK::TRAC_IK f_left_IK_solver("waist", "Left_link_foot", urdf_param, timeout, eps);
+		valid = f_left_IK_solver.getKDLChain(chain);
+		if (!valid) {
+			ROS_ERROR("[IK]There was no valid KDL chain found");//有効なKDLチェーンが見つかりませんでした
+			return;
+		}
+		valid = f_left_IK_solver.getKDLLimits(ll,ul);
+		if (!valid) {
+			ROS_ERROR("[IK]There were no valid KDL joint limits found");//有効なKDL関節限度が見つかりませんでした
+			return;
+		}
+		//関節の限度が問題ないかのチェック
+		assert(chain.getNrOfJoints() == ll.data.size());
+		assert(chain.getNrOfJoints() == ul.data.size());
+		// すべての関節限界の中間に名目上のチェーン構成を作成する
+		KDL::JntArray f_left_nominal(chain.getNrOfJoints());
+		for (uint j=0; j<f_left_nominal.data.size(); j++) {
+			f_left_nominal(j) = (ll(j)+ul(j))/2.0;
+		}
+		rc = f_left_IK_solver.CartToJnt(f_left_nominal,end_effector_pose,result);
+		if(rc>=0){
+			ROS_INFO("[IK]%s IK is Success!",select_leg.c_str());
+		}else{
+			ROS_ERROR("[IK]%s IK is Error (rc = %d)",select_leg.c_str(),rc);
+			ROS_ERROR("[IK]Calculation is not possible with that target value");
+			return;
+		}
+		joint_angle[4] = result.operator()(0,0);
+		joint_angle[3] = result.operator()(1,0);
+		joint_angle[2] = result.operator()(2,0);
+		joint_angle[1] = result.operator()(3,0);
+		joint_angle[0] = result.operator()(4,0);
+	}else if(select_leg == "s_right"){
+		ROS_INFO("s_right_ik_solver");
+		TRAC_IK::TRAC_IK s_right_IK_solver("Right_link_foot", "waist", urdf_param, timeout, eps);
+		valid = s_right_IK_solver.getKDLChain(chain);
+		if (!valid) {
+			ROS_ERROR("[IK]There was no valid KDL chain found");//有効なKDLチェーンが見つかりませんでした
+			return;
+		}
+		valid = s_right_IK_solver.getKDLLimits(ll,ul);
+		if (!valid) {
+			ROS_ERROR("[IK]There were no valid KDL joint limits found");//有効なKDL関節限度が見つかりませんでした
+			return;
+		}
+		//関節の限度が問題ないかのチェック
+		assert(chain.getNrOfJoints() == ll.data.size());
+		assert(chain.getNrOfJoints() == ul.data.size());
+		// すべての関節限界の中間に名目上のチェーン構成を作成する
+		KDL::JntArray s_right_nominal(chain.getNrOfJoints());
+		for (uint j=0; j<s_right_nominal.data.size(); j++) {
+			s_right_nominal(j) = (ll(j)+ul(j))/2.0;
+		}
+		rc = s_right_IK_solver.CartToJnt(s_right_nominal,end_effector_pose,result);
+		if(rc>=0){
+			ROS_INFO("[IK]%s IK is Success!",select_leg.c_str());
+		}else{
+			ROS_ERROR("[IK]%s IK is Error (rc = %d)",select_leg.c_str(),rc);
+			ROS_ERROR("[IK]Calculation is not possible with that target value");
+			return;
+		}
+		joint_angle[5] = result.operator()(0,0);
+		joint_angle[6] = result.operator()(1,0);
+		joint_angle[7] = result.operator()(2,0);
+		joint_angle[8] = result.operator()(3,0);
+		joint_angle[9] = result.operator()(4,0);
+	}
+	return;
+}
+
 int main(int argc, char *argv[]){
 	ros::init(argc, argv, "pwr_v2_walking_pattern_generator_node");
 	ros::NodeHandle nh;
-
 	double eps = 1e-5;
-	double timeout;
+	double timeout = 0.005;
 	std::string urdf_param;
 	nh.param("timeout", timeout, 0.005);
 	nh.param("urdf_param", urdf_param, std::string("/robot_description"));
 
-	// ros::Subscriber real_CP_position_sub = nh.subscribe("pwr_v2_Capture_point",10,Sub_real_CP_Callback);
+	ros::Subscriber real_CP_position_sub = nh.subscribe("pwr_v2_CoM_pose",10,Sub_real_CoM_Callback);
 	
 	ros::Publisher joint_states_pub = nh.advertise<sensor_msgs::JointState>("joint_states",100);
 	// ros::Publisher leg_mode_pub = nh.advertise<std_msgs::Float64>("leg_mode",10);
@@ -356,6 +443,8 @@ int main(int argc, char *argv[]){
 	i = 1;
 	j = 0;
 	ros::Time TIME;
+	
+
 	while(ros::ok()){
 		TIME = ros::Time::now();
 
@@ -383,16 +472,16 @@ int main(int argc, char *argv[]){
 		
 		if(i<=division){
 			ROS_INFO("[IK]Sup:Right / Free:Left");
-			IK_solver(nh, "Right_link_foot", "waist", timeout, urdf_param, eps, "s_right", LIP_CoM_pos.col(i-1)-Right_foot_init_position);
-			IK_solver(nh, "waist", "Left_link_foot", timeout, urdf_param, eps, "f_left", Left_foot_init_position-LIP_CoM_pos.col(i-1));
+			IK_solver(nh, "s_right", LIP_CoM_pos.col(i-1)-Right_foot_init_position, urdf_param, timeout, eps);
+			IK_solver(nh, "f_left", Left_foot_init_position-LIP_CoM_pos.col(i-1), urdf_param, timeout, eps);
 			right_foot_msg = setPoint(Right_foot_init_position ,i-1,TIME,"Right_Foot");
 			left_foot_msg = setPoint(Left_foot_init_position,i-1,TIME, "Left_Foot");
 		}
 		// Sup:Right / Free:Left
 		else if(leg_mode_msg.data==1.0 && i>division){
 			ROS_INFO("[IK]Sup:Right / Free:Left");
-			IK_solver(nh, "Right_link_foot", "waist", timeout, urdf_param, eps, "s_right", LIP_CoM_pos.col(i-1)-ZMP_des.col(i-1));
-			IK_solver(nh, "waist", "Left_link_foot", timeout, urdf_param, eps, "f_left", Free_Leg_position.col(j)-LIP_CoM_pos.col(i-1));
+			IK_solver(nh, "s_right", LIP_CoM_pos.col(i-1)-ZMP_des.col(i-1), urdf_param, timeout, eps);
+			IK_solver(nh, "f_left", Free_Leg_position.col(j)-LIP_CoM_pos.col(i-1), urdf_param, timeout, eps);
 			right_foot_msg = setPoint( ZMP_des.col(i-1),i-1,TIME,"Right_Foot");
 			left_foot_msg = setPoint(Free_Leg_position.col(j),i-1,TIME,"Left_Foot");
 			j++;
@@ -400,8 +489,8 @@ int main(int argc, char *argv[]){
 		// Sup:Left / Free:Right
 		else if(leg_mode_msg.data==-1.0 && i>division){
 			ROS_INFO("[IK]Sup:Left / Free:Right");
-			IK_solver(nh, "Left_link_foot", "waist", timeout, urdf_param, eps, "s_left", LIP_CoM_pos.col(i-1)-ZMP_des.col(i-1));
-			IK_solver(nh, "waist", "Right_link_foot", timeout, urdf_param, eps, "f_right", Free_Leg_position.col(j)-LIP_CoM_pos.col(i-1));
+			IK_solver(nh, "s_left", LIP_CoM_pos.col(i-1)-ZMP_des.col(i-1), urdf_param, timeout, eps);
+			IK_solver(nh, "f_right", Free_Leg_position.col(j)-LIP_CoM_pos.col(i-1), urdf_param, timeout, eps);
 			right_foot_msg = setPoint(Free_Leg_position.col(j),i-1,TIME,"Right_Foot");
 			left_foot_msg = setPoint(ZMP_des.col(i-1),i-1,TIME,"Left_Foot");
 			j++;
