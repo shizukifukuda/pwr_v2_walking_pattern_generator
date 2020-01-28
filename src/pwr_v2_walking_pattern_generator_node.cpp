@@ -25,9 +25,6 @@ using namespace Eigen;
 
 #define _USE_MATH_DEFINES
 #define G 9.805					// 重力加速度
-int step = 7;					// 基準ZMPの数
-int division = 100;				// 一歩あたりの分割数
-double limit_time = 1.0;		// 一歩あたりの計算時間（sec）
 
 Vector3d Left_foot_init_position(0.0, 0.033, 0.0);		//左足先の初期位置
 Vector3d Right_foot_init_position(0.0, -0.033, 0.0);	//右足先の初期位置
@@ -61,12 +58,14 @@ sensor_msgs::JointState joint_state_publisher(float *joint_state, ros::Time time
 }
 
 Vector3d sub_CoM_vector;
-geometry_msgs::PoseStamped sub_CoM_pose;
+Quaterniond CoM_quaternion(1, 0, 0, 0);
+Quaterniond init_CoM_quaternion(1, 0, 0, 0);
+Quaterniond sub_CoM_quaternion(1, 0, 0, 0);
 void Sub_real_CoM_Callback(const geometry_msgs::PoseStamped &real_CoM){
 	sub_CoM_vector(0) = real_CoM.pose.position.x;
 	sub_CoM_vector(1) = real_CoM.pose.position.y;
 	sub_CoM_vector(2) = real_CoM.pose.position.z;
-	sub_CoM_pose = real_CoM;
+	// sub_CoM_quaternion(real_CoM.pose.orientation.w, real_CoM.pose.orientation.x, real_CoM.pose.orientation.y, real_CoM.pose.orientation.z);
 }
 // Low Path Filter
 Vector3d LP_Filter(double rc, double ts, Vector3d f_x1, Vector3d f_x2){
@@ -91,8 +90,8 @@ void waist_pose_publisher(Vector3d CoM, ros::Time time, int mode){
 	tf::Transform transform;
 	transform.setOrigin(tf::Vector3(CoM[0], CoM[1], CoM[2]) );
 	tf::Quaternion q;
-	if(mode == 1||mode == 3)q.setRPY(0, 0, 0);
-	if(mode == 2)q = tf::Quaternion(-sub_CoM_pose.pose.orientation.y, sub_CoM_pose.pose.orientation.x, sub_CoM_pose.pose.orientation.z, sub_CoM_pose.pose.orientation.w);
+	q.setRPY(0, 0, 0);
+	// if(mode == 2)q = tf::Quaternion(-CoM_quaternion.y(), CoM_quaternion.x(), CoM_quaternion.z(), CoM_quaternion.w());
 	transform.setRotation(q);
 	br.sendTransform(tf::StampedTransform(transform, time, "world", "base_link"));
 }
@@ -117,8 +116,8 @@ void IK_solver(ros::NodeHandle& nh, std::string select_leg, Vector3d position, s
 	double EuZ=0.0, EuY=0.0, EuX=0.0;
 	KDL::Rotation eep_Rotation;
 	eep_Rotation = eep_Rotation.EulerZYX(EuZ,EuY,EuX); //回転行列
-	if(mode==2 && select_leg=="s_left")eep_Rotation = eep_Rotation.Quaternion(-sub_CoM_pose.pose.orientation.y, sub_CoM_pose.pose.orientation.x, sub_CoM_pose.pose.orientation.z, sub_CoM_pose.pose.orientation.w);
-	if(mode==2 && select_leg=="s_right")eep_Rotation = eep_Rotation.Quaternion(-sub_CoM_pose.pose.orientation.y, sub_CoM_pose.pose.orientation.x, sub_CoM_pose.pose.orientation.z, sub_CoM_pose.pose.orientation.w);
+	// if(mode==2 && select_leg=="s_left")eep_Rotation = eep_Rotation.Quaternion(-CoM_quaternion.y(), CoM_quaternion.x(), CoM_quaternion.z(), CoM_quaternion.w());
+	// if(mode==2 && select_leg=="s_right")eep_Rotation = eep_Rotation.Quaternion(-CoM_quaternion.y(), CoM_quaternion.x(), CoM_quaternion.z(), CoM_quaternion.w());
 	KDL::Vector eep_Vector; //位置ベクトル
 	eep_Vector.x(position(0));  //位置の目標値を各要素に代入
 	eep_Vector.y(position(1));
@@ -269,19 +268,23 @@ void IK_solver(ros::NodeHandle& nh, std::string select_leg, Vector3d position, s
 int main(int argc, char *argv[]){
 	ros::init(argc, argv, "pwr_v2_walking_pattern_generator_node");
 	ros::NodeHandle nh;
-	ros::NodeHandle pn("~");
 	double CoM_HIGHT = 0.24;
 	double eps = 1e-5;
 	double timeout = 0.005;
 	double K = 1.0;					// ゲイン
 	std::string urdf_param;
+	double RC = 10.0; // カットオフ周波数
+	double Ts = 100.0; // ループ周期
+
+	ros::NodeHandle pn("~");
 	pn.getParam("CoM_Hight", CoM_HIGHT);
 	pn.getParam("timeout", timeout);
 	pn.getParam("urdf_param", urdf_param);
 	pn.getParam("gain", K);
+	pn.getParam("cut_off_Hz", RC);
+	pn.getParam("loop_Hz", Ts);
 
 	ros::Subscriber real_CP_position_sub = nh.subscribe("pwr_v2_CoM_pose",10,Sub_real_CoM_Callback);
-	
 	ros::Publisher joint_states_pub = nh.advertise<sensor_msgs::JointState>("joint_states",100);
 	// ros::Publisher leg_mode_pub = nh.advertise<std_msgs::Float64>("leg_mode",10);
 	// ros::Publisher left_foot_position_pub = nh.advertise<geometry_msgs::PointStamped>("left_foot_point",10);
@@ -289,11 +292,14 @@ int main(int argc, char *argv[]){
 	// ros::Publisher LIP_CoM_position_pub = nh.advertise<geometry_msgs::PointStamped>("LIP_CoM_point",10);
 	
 	// 基準ZMPの設定
+	int step = 7;					// 基準ZMPの数
 	MatrixXd ZMP_ref(3,step);	// 基準ZMP
 	ZMP_ref <<  0.0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
 				0.0,-0.040, 0.040,-0.040, 0.040,-0.040, 0.040,
 				0.0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000;
 
+	int division = 100;					// 一歩あたりの分割数
+	double limit_time = 1.0;			// 一歩あたりの計算時間（sec）
 	double omega = sqrt(G/CoM_HIGHT);					// 角速度
 	double Hz = 1.0 / (limit_time / (double)division);	// ループ周期
 	ROS_INFO("[WPG] Hz = %lf",Hz);
@@ -303,11 +309,11 @@ int main(int argc, char *argv[]){
 	ROS_INFO("[WPG] Set Reference Capture Point");
 	MatrixXd CP_ref_ini(3,step);	// 基準CP開始点
 	MatrixXd CP_ref_end(3,step);	// 基準CP終点
-	double num_time = limit_time * (double)step-1;
-	double wTi;
 	int i = step - 1;
+	double num_time = limit_time * (double)i;
 	CP_ref_end.col(i-1) = ZMP_ref.col(i);
 	i--;
+	double wTi;
 	while(ros::ok()){
 		wTi = -1.0 * omega * num_time;
 		CP_ref_ini.col(i) = ZMP_ref.col(i) + exp(wTi) * (CP_ref_end.col(i) - ZMP_ref.col(i));
@@ -452,10 +458,8 @@ int main(int argc, char *argv[]){
 	Hz = 20;
 	ros::Rate loop_rate_2(Hz);
 	ros::Time TIME;
-	double _dt;
+	double _dt = 0.01;
 	double st = ros::Time::now().toSec();
-	double RC=100.0;
-	double Ts=20.0;
 	Vector3d sensor(0.0, 0.0, 0.0650);
 	Vector3d sensor_position;
 	MatrixXd robot_CoM_pos = MatrixXd::Zero(3,3);
@@ -469,7 +473,7 @@ int main(int argc, char *argv[]){
 	std::ofstream fout_1("/home/shizuki/SynologyDrive/大学/修士論文/record/check_only_LIP.csv");
 	fout_1 << "time,seq,CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,CoM_position_x,CoM_positon_y,CP_x,CP_y" << std::endl;
 	std::ofstream fout_2("/home/shizuki/SynologyDrive/大学/修士論文/record/check_use_IMU.csv");
-	fout_2 << "time,seq,CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,CoM_position_x,CoM_positon_y,CP_x,CP_y" << std::endl;
+	fout_2 << "time,seq,CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,(LIP)CoM_pos_x,(LIP)CoM_pos_y,(IMU)CoM_pos_x,(IMU)CoM_pos_y,(LIP)CoM_spd_x,(LIP)CoM_spd_y,(IMU)CoM_spd_x,(IMU)CoM_spd_y,(LIP)CP_x,(LIP)CP_y,(IMU)CP_x,(IMU)CP_y" << std::endl;
 	ROS_INFO("[debug] set csv file");
 	std::ofstream fout_3("/home/shizuki/SynologyDrive/大学/修士論文/record/check_LIP_and_IMU.csv");
 	fout_3 << "time,seq,CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,(LIP)CoM_pos_x,(LIP)CoM_pos_y,(LIP)CoM_spd_x,(LIP)CoM_spd_y,(LIP)CP_x,(LIP)CP_y,(IMU)CoM_pos_x,(IMU)CoM_pos_y,(IMU)CoM_spd_x,(IMU)CoM_spd_y,(IMU)CP_x,(IMU)CP_y" << std::endl;
@@ -477,8 +481,12 @@ int main(int argc, char *argv[]){
 
 	while(ros::ok()){
 		TIME = ros::Time::now();
-		_dt = st - TIME.toSec();
-		Ts = 1 / _dt;
+		// _dt = TIME.toSec() - st;
+		// Ts = 1 / _dt;
+		
+		// 初期姿勢の取得
+		// if(i==1)init_CoM_quaternion = sub_CoM_quaternion;
+		// CoM_quaternion += init_CoM_quaternion - sub_CoM_quaternion;
 
 		u(0,0) = ZMP_des(0,i-1);
 		Xx = RungeKutta(dX, Xx, u, tt, dt, A, B, C, D);
@@ -544,11 +552,11 @@ int main(int argc, char *argv[]){
 			robot_CoM_pos.col(1) = sensor_position + sub_CoM_vector;
 			// 実機の重心位置の差から速度を求める
 			ROS_INFO("[debug] CoM speed");
-			robot_CoM_spd.col(1) = (robot_CoM_pos.col(0) - robot_CoM_pos.col(1)) / _dt;
-			// robot_CoM_spd.col(2) = LP_Filter(RC,Ts, robot_CoM_spd.col(1), robot_CoM_spd.col(0));
+			robot_CoM_spd.col(1) = (robot_CoM_pos.col(1) - robot_CoM_pos.col(0)) / _dt;
+			robot_CoM_spd.col(2) = LP_Filter(RC,Ts, robot_CoM_spd.col(1), robot_CoM_spd.col(0));
 			//実機の Capture Point を求める
 			ROS_INFO("[debug] capture point");
-			robot_CP = robot_CoM_pos.col(1) + (robot_CoM_spd.col(1) / omega);
+			robot_CP = robot_CoM_pos.col(1) + (robot_CoM_spd.col(2) / omega);
 			robot_CP(2) = 0.0;
 			// 次回の計算用に値を保持する
 			robot_CoM_pos.col(0) = robot_CoM_pos.col(1);
@@ -587,7 +595,11 @@ int main(int argc, char *argv[]){
 			fout_2 << TIME.toSec() <<","<< i-1 <<","<<
 			CP_ref_ti(0,i-1) <<","<< CP_ref_ti(1,i-1) <<","<<
 			ZMP_des(0,i-1) <<","<< ZMP_des(1,i-1) <<","<< 
+			LIP_CoM_pos(0,i-1) <<","<< LIP_CoM_pos(1,i-1) <<","<<
 			robot_CoM_pos(0,1) <<","<< robot_CoM_pos(1,1) <<","<<
+			LIP_CoM_spd(0,i-1) <<","<< LIP_CoM_spd(1,i-1) <<","<<
+			robot_CoM_spd(0,1) <<","<< robot_CoM_spd(1,1) <<","<<
+			LIP_CP(0,i-1) <<","<< LIP_CP(1,i-1) <<","<<
 			robot_CP(0) <<","<< robot_CP(1) <<","<<
 			std::endl;
 		}
@@ -600,7 +612,7 @@ int main(int argc, char *argv[]){
 			robot_CoM_pos.col(1) = sensor_position + sub_CoM_vector;
 			// 実機の重心位置の差から速度を求める
 			ROS_INFO("[debug] CoM speed");
-			robot_CoM_spd.col(1) = (robot_CoM_pos.col(0) - robot_CoM_pos.col(1)) / _dt;
+			robot_CoM_spd.col(1) = (robot_CoM_pos.col(1) - robot_CoM_pos.col(0)) / _dt;
 			// robot_CoM_spd.col(2) = LP_Filter(RC,Ts, robot_CoM_spd.col(1), robot_CoM_spd.col(0));
 			//実機の Capture Point を求める
 			ROS_INFO("[debug] capture point");
