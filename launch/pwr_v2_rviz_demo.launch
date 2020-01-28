@@ -18,5 +18,7 @@
     <param name="CoM_Hight" value="0.24"/>
     <param name="mode" value="1"/>
     <param name="gain" value="1.0"/>
+    <param name="cut_off_Hz" value="15.0"/>
+    <param name="loop_Hz" value="100.0"/>
 </node>
 </launch>
