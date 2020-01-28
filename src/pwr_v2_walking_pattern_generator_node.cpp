@@ -362,11 +362,9 @@ int main(int argc, char *argv[]){
 	// 最初の一歩目
 	Vector3d start_position = Free_Leg_position.col(0);
 	Vector3d end_position = ZMP_ref.col(2);
-	// std::cout << "start_position(0)\n" << start_position <<std::endl;
-	// std::cout << "end_position(2)\n" << end_position <<std::endl;
 	double dx = (end_position(0) - start_position(0)) / (double)division;
 	double dy = (end_position(1) - start_position(1)) / (double)division;
-	double dz = 0.02 / ((double)division/2.0);
+	double dz = 0.025 / ((double)division/2.0);
 	// ROS_INFO("dx= %lf : dy= %lf : dz= %lf",dx,dy,dz);
 	j = 1;
 	for(i=1 ; i<division ; i++){
@@ -383,12 +381,8 @@ int main(int argc, char *argv[]){
 	for (s=3 ; s<step ; s++){
 		start_position = ZMP_ref.col(s-2);
 		end_position = ZMP_ref.col(s);
-		// std::cout << "start_position : " << s-2 << " \n" << start_position <<std::endl;
-		// std::cout << "end_position : " << s << " \n" << end_position <<std::endl;
 		dx = (end_position(0) - start_position(0)) / (double)division;
 		dy = (end_position(1) - start_position(1)) / (double)division;
-		// dz = 0.03 / ((double)division/2.0);
-		// ROS_INFO("dx= %lf : dy= %lf : dz= %lf",dx,dy,dz);
 		Free_Leg_position.col(j) = start_position;
 		j++;
 		for(i=1 ; i<division ; i++){
