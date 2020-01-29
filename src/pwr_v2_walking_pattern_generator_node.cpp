@@ -296,8 +296,8 @@ int main(int argc, char *argv[]){
 	// 基準ZMPの設定
 	int step = 7;					// 基準ZMPの数
 	MatrixXd ZMP_ref(3,step);	// 基準ZMP
-	ZMP_ref <<  0.0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
-				0.0,-0.040, 0.040,-0.040, 0.040,-0.040, 0.040,
+	ZMP_ref <<  0.0, 0.000, 0.100, 0.200, 0.300, 0.400, 0.500,
+				0.0,-0.033, 0.043,-0.043, 0.043,-0.043, 0.043,
 				0.0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000;
 
 	int division = 100;					// 一歩あたりの分割数
@@ -414,7 +414,6 @@ int main(int argc, char *argv[]){
 	Hz = 20;
 	ros::Rate loop_rate_2(Hz);
 	ros::Time TIME;
-	double _dt = 0.01;
 	double st = ros::Time::now().toSec();
 	Vector3d sensor(0.0, 0.0, 0.0650);
 	Vector3d sensor_position;
@@ -447,8 +446,8 @@ int main(int argc, char *argv[]){
 
 	while(ros::ok()){
 		TIME = ros::Time::now();
-		// _dt = TIME.toSec() - st;
-		// Ts = 1 / _dt;
+		// dt = TIME.toSec() - st;
+		// Ts = 1 / dt;
 		
 		// 初期姿勢の取得
 		// if(i==1)init_CoM_quaternion = sub_CoM_quaternion;
@@ -520,7 +519,7 @@ int main(int argc, char *argv[]){
 			robot_CoM_pos.col(1) = sensor_position + sub_CoM_vector;
 			// 実機の重心位置の差から速度を求める
 			ROS_INFO("[debug] CoM speed");
-			robot_CoM_spd.col(1) = (robot_CoM_pos.col(1) - robot_CoM_pos.col(0)) / _dt;
+			robot_CoM_spd.col(1) = (robot_CoM_pos.col(1) - robot_CoM_pos.col(0)) / dt;
 			robot_CoM_spd.col(2) = LP_Filter(RC,Ts, robot_CoM_spd.col(1), robot_CoM_spd.col(0));
 			//実機の Capture Point を求める
 			ROS_INFO("[debug] capture point");
@@ -585,7 +584,7 @@ int main(int argc, char *argv[]){
 			robot_CoM_pos.col(1) = sensor_position + sub_CoM_vector;
 			// 実機の重心位置の差から速度を求める
 			ROS_INFO("[debug] CoM speed");
-			robot_CoM_spd.col(1) = (robot_CoM_pos.col(1) - robot_CoM_pos.col(0)) / _dt;
+			robot_CoM_spd.col(1) = (robot_CoM_pos.col(1) - robot_CoM_pos.col(0)) / dt;
 			robot_CoM_spd.col(2) = LP_Filter(RC,Ts, robot_CoM_spd.col(1), robot_CoM_spd.col(0));
 			//実機の Capture Point を求める
 			ROS_INFO("[debug] capture point");
@@ -650,7 +649,7 @@ int main(int argc, char *argv[]){
 			s++;
 			if(i>=(2*division)){
 				leg_mode_msg.data = leg_mode_msg.data * -1.0;
-				ZMP_2_FLEG_Vector.col(1) = ZMP_ref.col(s-1) - ZMP_ref.col(s);
+				ZMP_2_FLEG_Vector.col(1) = ZMP_2_FLEG_Vector.col(1) * -1.0;
 				ZMP_2_FLEG_Vector.col(0) = ZMP_2_FLEG_Vector.col(1);
 				end_position = ZMP_ref.col(s+1);
 				start_position = ZMP_ref.col(s-1);

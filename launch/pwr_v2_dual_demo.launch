@@ -16,9 +16,9 @@
     <param name="timeout" value="$(arg timeout)"/>
     <param name="urdf_param" value="/robot_description"/>
     <param name="CoM_Hight" value="0.24"/>
-    <param name="mode" value="3"/>
+    <param name="mode" value="2"/>
     <param name="gain" value="1.0"/>
-    <param name="cut_off_Hz" value="1.0"/>
+    <param name="cut_off_Hz" value="20.0"/>
     <param name="loop_Hz" value="100.0"/>
 </node>
 <node name="pwr_v2_dynamixel_control_node" pkg="pwr_v2_dynamixel_control" type="pwr_v2_dynamixel_control" output="screen"/>
