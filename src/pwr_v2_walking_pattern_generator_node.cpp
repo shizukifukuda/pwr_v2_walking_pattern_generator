@@ -59,8 +59,7 @@ sensor_msgs::JointState joint_state_publisher(float *joint_state, ros::Time time
 
 Vector3d sub_CoM_vector;
 Quaterniond CoM_quaternion(1, 0, 0, 0);
-Quaterniond init_CoM_quaternion(1, 0, 0, 0);
-Quaterniond sub_CoM_quaternion(1, 0, 0, 0);
+Quaterniond init_CoM_quaternion(1, 0, 0, 0);Quaterniond sub_CoM_quaternion(1, 0, 0, 0);
 void Sub_real_CoM_Callback(const geometry_msgs::PoseStamped &real_CoM){
 	sub_CoM_vector(0) = real_CoM.pose.position.x;
 	sub_CoM_vector(1) = real_CoM.pose.position.y;
@@ -296,8 +295,8 @@ int main(int argc, char *argv[]){
 	// 基準ZMPの設定
 	int step = 7;					// 基準ZMPの数
 	MatrixXd ZMP_ref(3,step);	// 基準ZMP
-	ZMP_ref <<  0.0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
-				0.0,-0.033, 0.043,-0.043, 0.043,-0.043, 0.043,
+	ZMP_ref <<  0.0, 0.000, 0.100, 0.200, 0.300, 0.400, 0.500,
+				0.0,-0.033, 0.040,-0.040, 0.040,-0.040, 0.040,
 				0.0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000;
 
 	int division = 100;					// 一歩あたりの分割数
@@ -411,7 +410,7 @@ int main(int argc, char *argv[]){
 	s = 0;
 	i = 1;
 	j = 0;
-	Hz = 20;
+	Hz = 15;
 	ros::Rate loop_rate_2(Hz);
 	ros::Time TIME;
 	double st = ros::Time::now().toSec();
@@ -439,7 +438,7 @@ int main(int argc, char *argv[]){
 	Vector3d end_position = ZMP_ref.col(2);
 	double dx = (end_position(0) - start_position(0)) / (double)division;
 	double dy = (end_position(1) - start_position(1)) / (double)division;
-	double dz = 0.025 / ((double)division/2.0);
+	double dz = 0.03 / ((double)division/2.0);
 	ROS_INFO("dx= %lf : dy= %lf : dz= %lf",dx,dy,dz);
 	ZMP_2_FLEG_Vector.col(0) = Left_foot_init_position - ZMP_ref.col(1);
 	ROS_INFO("[debug] set free leg matrix");
@@ -575,7 +574,7 @@ int main(int argc, char *argv[]){
 			robot_CP(0) <<","<< robot_CP(1) <<","<<
 			std::endl;
 		}
-		else if(mode == 3){ // IMUで求めたCPの検証
+		else if(mode == 3){ // IMUで求めたCPの検証。ZMP計算にはLIPモデルのみを使用
 			// センサの座標を求める
 			ROS_INFO("[debug] sensor position");
 			sensor_position = LIP_CoM_pos.col(i-1) + sensor;
