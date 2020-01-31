@@ -270,17 +270,20 @@ int main(int argc, char *argv[]){
 	double CoM_HIGHT = 0.24;
 	double eps = 1e-5;
 	double timeout = 0.005;
-	int mode = 1;	// LIPモデルだけ：１　IMUを使用：２　値の検証用：３
+	int mode = 1;	// LIPモデルだけ：１　IMUを使用：２
+	int step_mode = 2; // 移動：1　足踏み：2
 	double K = 1.0;					// ゲイン
 	std::string urdf_param;
 	double RC = 10.0; // カットオフ周波数
 	double Ts = 100.0; // ループ周期
 
+	// launchファイルからパラメータを取得
 	ros::NodeHandle pn("~");
 	pn.getParam("CoM_Hight", CoM_HIGHT);
 	pn.getParam("timeout", timeout);
 	pn.getParam("urdf_param", urdf_param);
 	pn.getParam("mode", mode);
+	pn.getParam("step_mode", step_mode);
 	pn.getParam("gain", K);
 	pn.getParam("cut_off_Hz", RC);
 	pn.getParam("loop_Hz", Ts);
@@ -293,11 +296,20 @@ int main(int argc, char *argv[]){
 	// ros::Publisher LIP_CoM_position_pub = nh.advertise<geometry_msgs::PointStamped>("LIP_CoM_point",10);
 	
 	// 基準ZMPの設定
-	int step = 7;					// 基準ZMPの数
+	int step = 7;				// 基準ZMPの数
 	MatrixXd ZMP_ref(3,step);	// 基準ZMP
+	// 歩行動作用のZMP_ref
+	if(step_mode == 1){
 	ZMP_ref <<  0.0, 0.000, 0.100, 0.200, 0.300, 0.400, 0.500,
 				0.0,-0.033, 0.040,-0.040, 0.040,-0.040, 0.040,
 				0.0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000;
+	}
+	// 足踏み動作用の基準ZMP
+	if(step_mode == 2){
+	ZMP_ref <<  0.0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
+				0.0,-0.033, 0.040,-0.040, 0.040,-0.040, 0.040,
+				0.0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000;
+	}
 
 	int division = 100;					// 一歩あたりの分割数
 	double limit_time = 1.0;			// 一歩あたりの計算時間（sec）
@@ -421,13 +433,8 @@ int main(int argc, char *argv[]){
 	MatrixXd robot_CP = MatrixXd::Zero(3,1);
 	ROS_INFO("[debug] set Matrix");
 
-	std::ofstream fout_1("/home/shizuki/SynologyDrive/大学/修士論文/record/check_only_LIP.csv");
-	fout_1 << "time,seq,CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,CoM_position_x,CoM_positon_y,CP_x,CP_y" << std::endl;
-	std::ofstream fout_2("/home/shizuki/SynologyDrive/大学/修士論文/record/check_use_IMU.csv");
-	fout_2 << "time,seq,CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,(LIP)CoM_pos_x,(LIP)CoM_pos_y,(IMU)CoM_pos_x,(IMU)CoM_pos_y,(LIP)CoM_spd_x,(LIP)CoM_spd_y,(IMU)CoM_spd_x,(IMU)CoM_spd_y,(LIP)CP_x,(LIP)CP_y,(IMU)CP_x,(IMU)CP_y" << std::endl;
-	ROS_INFO("[debug] set csv file");
-	std::ofstream fout_3("/home/shizuki/SynologyDrive/大学/修士論文/record/check_LIP_and_IMU.csv");
-	fout_3 << "time,seq,CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,(LIP)CoM_pos_x,(LIP)CoM_pos_y,(LIP)CoM_spd_x,(LIP)CoM_spd_y,(LIP)CP_x,(LIP)CP_y,(IMU)CoM_pos_x,(IMU)CoM_pos_y,(IMU)CoM_spd_x,(IMU)CoM_spd_y,(IMU)CP_x,(IMU)CP_y" << std::endl;
+	std::ofstream fout("/home/shizuki/SynologyDrive/大学/修士論文/record/pwr_v2_exp_.csv");
+	fout << "time,seq,CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,(LIP)CoM_pos_x,(LIP)CoM_pos_y,(IMU)CoM_pos_x,(IMU)CoM_pos_y,(LIP)CoM_spd_x,(LIP)CoM_spd_y,(IMU)CoM_spd_x,(IMU)CoM_spd_y,(LIP)CP_x,(LIP)CP_y,(IMU)CP_x,(IMU)CP_y" << std::endl;
 	ROS_INFO("[debug] set csv file");
 
 	// 遊脚の軌道
@@ -466,7 +473,25 @@ int main(int argc, char *argv[]){
 		LIP_CP.col(i-1) = LIP_CoM_pos.col(i-1) + (LIP_CoM_spd.col(i-1)/omega);
 		LIP_CP(2,i-1) = 0.0;
 
-		if(mode == 1){ // LIPモデルのみでZMPを修正
+		// センサの座標を求める
+		ROS_INFO("[debug] sensor position");
+		sensor_position = LIP_CoM_pos.col(i-1) + sensor;
+		// 実機の重心座標をもとめる
+		ROS_INFO("[debug] CoM position");
+		robot_CoM_pos.col(1) = sensor_position + sub_CoM_vector;
+		// 実機の重心位置の差から速度を求める
+		ROS_INFO("[debug] CoM speed");
+		robot_CoM_spd.col(1) = (robot_CoM_pos.col(1) - robot_CoM_pos.col(0)) / dt;
+		robot_CoM_spd.col(2) = LP_Filter(RC,Ts, robot_CoM_spd.col(1), robot_CoM_spd.col(0));
+		//実機の Capture Point を求める
+		ROS_INFO("[debug] capture point");
+		robot_CP = robot_CoM_pos.col(1) + (robot_CoM_spd.col(2) / omega);
+		robot_CP(2) = 0.0;
+		// 次回の計算用に値を保持する
+		robot_CoM_pos.col(0) = robot_CoM_pos.col(1);
+		robot_CoM_spd.col(0) = robot_CoM_spd.col(2);
+
+		if(mode == 1){ // LIPモデルでZMPを修正
 			if(i<=division){
 				ROS_INFO("[IK]Sup:Right / Free:Left");
 				IK_solver(nh, "s_right", LIP_CoM_pos.col(i-1)-Right_foot_init_position, urdf_param, timeout, eps, mode);
@@ -501,33 +526,8 @@ int main(int argc, char *argv[]){
 				j++;
 			}
 			waist_pose_publisher(LIP_CoM_pos.col(i-1), TIME, mode);
-
-			fout_1 << TIME.toSec() <<","<< i-1 <<","<<
-			CP_ref_ti(0,i-1) <<","<< CP_ref_ti(1,i-1) <<","<<
-			ZMP_des(0,i-1) <<","<< ZMP_des(1,i-1) <<","<< 
-			LIP_CoM_pos(0,i-1) <<","<< LIP_CoM_pos(1,i-1) <<","<<
-			LIP_CP(0,i-1) <<","<< LIP_CP(1,i-1) <<","<<
-			std::endl;
 		}
 		else if(mode == 2){ // IMUの出力を使ってZMPを更新
-			// センサの座標を求める
-			ROS_INFO("[debug] sensor position");
-			sensor_position = LIP_CoM_pos.col(i-1) + sensor;
-			// 実機の重心座標をもとめる
-			ROS_INFO("[debug] CoM position");
-			robot_CoM_pos.col(1) = sensor_position + sub_CoM_vector;
-			// 実機の重心位置の差から速度を求める
-			ROS_INFO("[debug] CoM speed");
-			robot_CoM_spd.col(1) = (robot_CoM_pos.col(1) - robot_CoM_pos.col(0)) / dt;
-			robot_CoM_spd.col(2) = LP_Filter(RC,Ts, robot_CoM_spd.col(1), robot_CoM_spd.col(0));
-			//実機の Capture Point を求める
-			ROS_INFO("[debug] capture point");
-			robot_CP = robot_CoM_pos.col(1) + (robot_CoM_spd.col(2) / omega);
-			robot_CP(2) = 0.0;
-			// 次回の計算用に値を保持する
-			robot_CoM_pos.col(0) = robot_CoM_pos.col(1);
-			robot_CoM_spd.col(0) = robot_CoM_spd.col(2);
-
 			if(i<=division){
 				ROS_INFO("[IK]Sup:Right / Free:Left");
 				IK_solver(nh, "s_right", robot_CoM_pos.col(1)-Right_foot_init_position, urdf_param, timeout, eps, mode);
@@ -562,84 +562,19 @@ int main(int argc, char *argv[]){
 				j++;
 			}
 			waist_pose_publisher(robot_CoM_pos.col(1), TIME, mode);
-
-			fout_2 << TIME.toSec() <<","<< i-1 <<","<<
-			CP_ref_ti(0,i-1) <<","<< CP_ref_ti(1,i-1) <<","<<
-			ZMP_des(0,i-1) <<","<< ZMP_des(1,i-1) <<","<< 
-			LIP_CoM_pos(0,i-1) <<","<< LIP_CoM_pos(1,i-1) <<","<<
-			robot_CoM_pos(0,1) <<","<< robot_CoM_pos(1,1) <<","<<
-			LIP_CoM_spd(0,i-1) <<","<< LIP_CoM_spd(1,i-1) <<","<<
-			robot_CoM_spd(0,1) <<","<< robot_CoM_spd(1,1) <<","<<
-			LIP_CP(0,i-1) <<","<< LIP_CP(1,i-1) <<","<<
-			robot_CP(0) <<","<< robot_CP(1) <<","<<
-			std::endl;
 		}
-		else if(mode == 3){ // IMUで求めたCPの検証。ZMP計算にはLIPモデルのみを使用
-			// センサの座標を求める
-			ROS_INFO("[debug] sensor position");
-			sensor_position = LIP_CoM_pos.col(i-1) + sensor;
-			// 実機の重心座標をもとめる
-			ROS_INFO("[debug] CoM position");
-			robot_CoM_pos.col(1) = sensor_position + sub_CoM_vector;
-			// 実機の重心位置の差から速度を求める
-			ROS_INFO("[debug] CoM speed");
-			robot_CoM_spd.col(1) = (robot_CoM_pos.col(1) - robot_CoM_pos.col(0)) / dt;
-			robot_CoM_spd.col(2) = LP_Filter(RC,Ts, robot_CoM_spd.col(1), robot_CoM_spd.col(0));
-			//実機の Capture Point を求める
-			ROS_INFO("[debug] capture point");
-			robot_CP = robot_CoM_pos.col(1) + (robot_CoM_spd.col(2) / omega);
-			robot_CP(2) = 0.0;
-			// 次回の計算用に値を保持する
-			robot_CoM_pos.col(0) = robot_CoM_pos.col(1);
-			robot_CoM_spd.col(0) = robot_CoM_spd.col(2);
 
-			if(i<=division){
-				ROS_INFO("[IK]Sup:Right / Free:Left");
-				IK_solver(nh, "s_right", LIP_CoM_pos.col(i-1)-Right_foot_init_position, urdf_param, timeout, eps, mode);
-				IK_solver(nh, "f_left", Left_foot_init_position-LIP_CoM_pos.col(i-1), urdf_param, timeout, eps, mode);
-			}
-			// Sup:Right / Free:Left
-			else if(leg_mode_msg.data==1.0 && i>division){
-				ROS_INFO("[IK]Sup:Right / Free:Left");
-				ZMP_2_FLEG_Vector(0,1) = ZMP_2_FLEG_Vector(0,0) + dx;
-				ZMP_2_FLEG_Vector(1,1) = ZMP_2_FLEG_Vector(1,0) + dy;
-				if( j<(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) + dz;
-				else if( j>=(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) - dz;
-				support_leg_Vector =  LIP_CoM_pos.col(i-1)-ZMP_des.col(i-1);
-				free_leg_Vector = ZMP_2_FLEG_Vector.col(1) - support_leg_Vector;
-				IK_solver(nh, "s_right", support_leg_Vector, urdf_param, timeout, eps, mode);
-				IK_solver(nh, "f_left", free_leg_Vector, urdf_param, timeout, eps, mode);
-				ZMP_2_FLEG_Vector.col(0) = ZMP_2_FLEG_Vector.col(1);
-				j++;
-			}
-			// Sup:Left / Free:Right
-			else if(leg_mode_msg.data==-1.0 && i>division){
-				ROS_INFO("[IK]Sup:Left / Free:Right");
-				ZMP_2_FLEG_Vector(0,1) = ZMP_2_FLEG_Vector(0,0) + dx;
-				ZMP_2_FLEG_Vector(1,1) = ZMP_2_FLEG_Vector(1,0) + dy;
-				if( j<(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) + dz;
-				else if( j>=(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) - dz;
-				support_leg_Vector =  LIP_CoM_pos.col(i-1)-ZMP_des.col(i-1);
-				free_leg_Vector = ZMP_2_FLEG_Vector.col(1) - support_leg_Vector;
-				IK_solver(nh, "s_left", support_leg_Vector, urdf_param, timeout, eps, mode);
-				IK_solver(nh, "f_right", free_leg_Vector, urdf_param, timeout, eps, mode);
-				ZMP_2_FLEG_Vector.col(0) = ZMP_2_FLEG_Vector.col(1);
-				j++;
-			}
-			waist_pose_publisher(LIP_CoM_pos.col(i-1), TIME, mode);
-			
-			fout_3 << TIME.toSec() <<","<< i-1 <<","<<
-			CP_ref_ti(0,i-1) <<","<< CP_ref_ti(1,i-1) <<","<<
-			ZMP_des(0,i-1) <<","<< ZMP_des(1,i-1) <<","<< 
-			LIP_CoM_pos(0,i-1) <<","<< LIP_CoM_pos(1,i-1) <<","<<
-			LIP_CoM_spd(0,i-1) <<","<< LIP_CoM_spd(1,i-1) <<","<<
-			LIP_CP(0,i-1) <<","<< LIP_CP(1,i-1) <<","<<
-			robot_CoM_pos(0,1) <<","<< robot_CoM_pos(1,1) <<","<<
-			robot_CoM_spd(0,1) <<","<< robot_CoM_spd(1,1) <<","<<
-			robot_CP(0) <<","<< robot_CP(1) <<","<<
-			std::endl;
-		}
-		
+		fout << i-1 <<","<<
+		CP_ref_ti(0,i-1) <<","<< CP_ref_ti(1,i-1) <<","<<
+		ZMP_des(0,i-1) <<","<< ZMP_des(1,i-1) <<","<< 
+		LIP_CoM_pos(0,i-1) <<","<< LIP_CoM_pos(1,i-1) <<","<<
+		robot_CoM_pos(0,1) <<","<< robot_CoM_pos(1,1) <<","<<
+		LIP_CoM_spd(0,i-1) <<","<< LIP_CoM_spd(1,i-1) <<","<<
+		robot_CoM_spd(0,1) <<","<< robot_CoM_spd(1,1) <<","<<
+		LIP_CP(0,i-1) <<","<< LIP_CP(1,i-1) <<","<<
+		robot_CP(0) <<","<< robot_CP(1) <<","<<
+		std::endl;
+
 		joint_states_pub.publish(joint_state_publisher(joint_angle, TIME));
 		ROS_INFO("[WPG] Publish Point (i=%d, j=%d, leg_mode=%1.1f)",i,j,leg_mode_msg.data);
 		if( i>=data_count )break;
@@ -658,10 +593,11 @@ int main(int argc, char *argv[]){
 				j = 0;
 			}
 		}
-		if(mode==1||mode==3){
+		if(mode==1){
 			// CPの誤差を修正する所望のZMP(LIP model 使用)
 			ZMP_des.col(i) = ZMP_ref.col(s) + ( ( 1.0 + ( K/omega ) ) * ( LIP_CP.col(i-1) - CP_ref_ti.col(i-1) ) );
-		}else if(mode==2){
+		}
+		if(mode==2){
 			// CPの誤差を修正する所望のZMP(bno055使用)
 			ZMP_des.col(i) = ZMP_ref.col(s) + ( (1.0 + (K/omega)) * ( robot_CP - CP_ref_ti.col(i-1) ) );
 		}

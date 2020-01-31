@@ -16,9 +16,10 @@
     <param name="timeout" value="$(arg timeout)"/>
     <param name="urdf_param" value="/robot_description"/>
     <param name="CoM_Hight" value="0.24"/>
-    <param name="mode" value="1"/>
-    <param name="gain" value="1.0"/>
-    <param name="cut_off_Hz" value="15.0"/>
+    <param name="cut_off_Hz" value="20.0"/>
     <param name="loop_Hz" value="100.0"/>
+    <param name="gain" value="1.0"/>
+    <param name="step_mode" value="1"/> <!--歩行計画 前方へ移動：1　その場で足踏み：2 --> 
+    <param name="mode" value="1"/> <!-- ZMP更新 LIPモデル：1　IMU：2 -->
 </node>
 </launch>
