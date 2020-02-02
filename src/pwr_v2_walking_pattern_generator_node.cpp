@@ -312,7 +312,7 @@ int main(int argc, char *argv[]){
 	}
 
 	int division = 100;					// 一歩あたりの分割数
-	double limit_time = 6.5;			// 一歩あたりの計算時間（sec）
+	double limit_time = 1.0;			// 一歩あたりの計算時間（sec）
 	double omega = sqrt(G/CoM_HIGHT);					// 角速度
 	double Hz = 1.0 / (limit_time / (double)division);	// ループ周期
 	ROS_INFO("[WPG] Hz = %lf",Hz);
