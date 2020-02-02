@@ -419,13 +419,8 @@ int main(int argc, char *argv[]){
     Yy(0, 0) = 0;
 	Yy(1, 0) = 0;
 
-	s = 0;
-	i = 1;
-	j = 0;
-	Hz = 15;
-	ros::Rate loop_rate_2(Hz);
-	ros::Time TIME;
 	double st = ros::Time::now().toSec();
+	double _dt;
 	Vector3d sensor(0.0, 0.0, 0.0650);
 	Vector3d sensor_position;
 	MatrixXd robot_CoM_pos = MatrixXd::Zero(3,3);
@@ -434,7 +429,7 @@ int main(int argc, char *argv[]){
 	ROS_INFO("[debug] set Matrix");
 
 	std::ofstream fout("/home/shizuki/SynologyDrive/大学/修士論文/record/pwr_v2_exp_.csv");
-	fout << "time,seq,CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,(LIP)CoM_pos_x,(LIP)CoM_pos_y,(IMU)CoM_pos_x,(IMU)CoM_pos_y,(LIP)CoM_spd_x,(LIP)CoM_spd_y,(IMU)CoM_spd_x,(IMU)CoM_spd_y,(LIP)CP_x,(LIP)CP_y,(IMU)CP_x,(IMU)CP_y" << std::endl;
+	fout << "delta_t,seq,CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,(LIP)CoM_pos_x,(LIP)CoM_pos_y,(IMU)CoM_pos_x,(IMU)CoM_pos_y,(LIP)CoM_spd_x,(LIP)CoM_spd_y,(IMU)CoM_spd_x,(IMU)CoM_spd_y,(LIP)CP_x,(LIP)CP_y,(IMU)CP_x,(IMU)CP_y" << std::endl;
 	ROS_INFO("[debug] set csv file");
 
 	// 遊脚の軌道
@@ -445,28 +440,29 @@ int main(int argc, char *argv[]){
 	Vector3d end_position = ZMP_ref.col(2);
 	double dx = (end_position(0) - start_position(0)) / (double)division;
 	double dy = (end_position(1) - start_position(1)) / (double)division;
-	double dz = 0.03 / ((double)division/2.0);
+	double dz = 0.025 / ((double)division/2.0);
 	ROS_INFO("dx= %lf : dy= %lf : dz= %lf",dx,dy,dz);
 	ZMP_2_FLEG_Vector.col(0) = Left_foot_init_position - ZMP_ref.col(1);
 	ROS_INFO("[debug] set free leg matrix");
 
+	s = 0;
+	i = 1;
+	j = 0;
+	// Hz = 15;
+	ros::Rate loop_rate_2(Hz);
+	ros::Time TIME;
 	while(ros::ok()){
 		TIME = ros::Time::now();
-		// dt = TIME.toSec() - st;
-		// Ts = 1 / dt;
-		
-		// 初期姿勢の取得
-		// if(i==1)init_CoM_quaternion = sub_CoM_quaternion;
-		// CoM_quaternion += init_CoM_quaternion - sub_CoM_quaternion;
+		_dt = TIME.toSec() - st;
 
 		u(0,0) = ZMP_des(0,i-1);
 		Xx = RungeKutta(dX, Xx, u, tt, dt, A, B, C, D);
-        Yx = C*Xx;
+		Yx = C*Xx;
 		LIP_CoM_pos(0,i-1) = Yx(0);
 		LIP_CoM_spd(0,i-1) = Yx(1);
 		u(0,0) = ZMP_des(1,i-1);
 		Xy = RungeKutta(dX, Xy, u, tt, dt, A, B, C, D);
-        Yy = C*Xy;
+		Yy = C*Xy;
 		LIP_CoM_pos(1,i-1) = Yy(0);
 		LIP_CoM_spd(1,i-1) = Yy(1);
 		LIP_CoM_pos(2,i-1) = CoM_HIGHT;
@@ -481,11 +477,11 @@ int main(int argc, char *argv[]){
 		robot_CoM_pos.col(1) = sensor_position + sub_CoM_vector;
 		// 実機の重心位置の差から速度を求める
 		ROS_INFO("[debug] CoM speed");
-		robot_CoM_spd.col(1) = (robot_CoM_pos.col(1) - robot_CoM_pos.col(0)) / dt;
-		robot_CoM_spd.col(2) = LP_Filter(RC,Ts, robot_CoM_spd.col(1), robot_CoM_spd.col(0));
+		robot_CoM_spd.col(1) = (robot_CoM_pos.col(1) - robot_CoM_pos.col(0)) / _dt;
+		// robot_CoM_spd.col(2) = LP_Filter(RC,Ts, robot_CoM_spd.col(1), robot_CoM_spd.col(0));
 		//実機の Capture Point を求める
 		ROS_INFO("[debug] capture point");
-		robot_CP = robot_CoM_pos.col(1) + (robot_CoM_spd.col(2) / omega);
+		robot_CP = robot_CoM_pos.col(1) + (robot_CoM_spd.col(1) / omega);
 		robot_CP(2) = 0.0;
 		// 次回の計算用に値を保持する
 		robot_CoM_pos.col(0) = robot_CoM_pos.col(1);
@@ -502,8 +498,9 @@ int main(int argc, char *argv[]){
 				ROS_INFO("[IK]Sup:Right / Free:Left");
 				ZMP_2_FLEG_Vector(0,1) = ZMP_2_FLEG_Vector(0,0) + dx;
 				ZMP_2_FLEG_Vector(1,1) = ZMP_2_FLEG_Vector(1,0) + dy;
-				if( j<(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) + dz;
-				else if( j>=(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) - dz;
+				if( j<=(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) + dz;
+				else if( j>(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) - dz;
+				if(ZMP_2_FLEG_Vector(2,1)<0.0) ZMP_2_FLEG_Vector(2,1) = 0.0;
 				support_leg_Vector =  LIP_CoM_pos.col(i-1)-ZMP_des.col(i-1);
 				free_leg_Vector = ZMP_2_FLEG_Vector.col(1) - support_leg_Vector;
 				IK_solver(nh, "s_right", support_leg_Vector, urdf_param, timeout, eps, mode);
@@ -516,8 +513,9 @@ int main(int argc, char *argv[]){
 				ROS_INFO("[IK]Sup:Left / Free:Right");
 				ZMP_2_FLEG_Vector(0,1) = ZMP_2_FLEG_Vector(0,0) + dx;
 				ZMP_2_FLEG_Vector(1,1) = ZMP_2_FLEG_Vector(1,0) + dy;
-				if( j<(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) + dz;
-				else if( j>=(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) - dz;
+				if( j<=(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) + dz;
+				else if( j>(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) - dz;
+				if(ZMP_2_FLEG_Vector(2,1)<0.0) ZMP_2_FLEG_Vector(2,1) = 0.0;
 				support_leg_Vector =  LIP_CoM_pos.col(i-1)-ZMP_des.col(i-1);
 				free_leg_Vector = ZMP_2_FLEG_Vector.col(1) - support_leg_Vector;
 				IK_solver(nh, "s_left", support_leg_Vector, urdf_param, timeout, eps, mode);
@@ -564,7 +562,7 @@ int main(int argc, char *argv[]){
 			waist_pose_publisher(robot_CoM_pos.col(1), TIME, mode);
 		}
 
-		fout << i-1 <<","<<
+		fout << _dt <<","<< i-1 <<","<<
 		CP_ref_ti(0,i-1) <<","<< CP_ref_ti(1,i-1) <<","<<
 		ZMP_des(0,i-1) <<","<< ZMP_des(1,i-1) <<","<< 
 		LIP_CoM_pos(0,i-1) <<","<< LIP_CoM_pos(1,i-1) <<","<<
