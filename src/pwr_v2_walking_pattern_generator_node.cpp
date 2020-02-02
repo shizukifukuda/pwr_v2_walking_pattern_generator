@@ -312,7 +312,7 @@ int main(int argc, char *argv[]){
 	}
 
 	int division = 100;					// 一歩あたりの分割数
-	double limit_time = 1.0;			// 一歩あたりの計算時間（sec）
+	double limit_time = 6.5;			// 一歩あたりの計算時間（sec）
 	double omega = sqrt(G/CoM_HIGHT);					// 角速度
 	double Hz = 1.0 / (limit_time / (double)division);	// ループ周期
 	ROS_INFO("[WPG] Hz = %lf",Hz);
@@ -400,7 +400,7 @@ int main(int argc, char *argv[]){
 	D(1, 0) = 0;
 
     double tt = 0.0;
-	double dt = limit_time/(double)division;
+	double dt = 1.0/Hz;
     MatrixXd Xx(2, 1);
     Xx(0, 0) = 0;
     Xx(1, 0) = 0;
@@ -420,7 +420,7 @@ int main(int argc, char *argv[]){
 	Yy(1, 0) = 0;
 
 	double st = ros::Time::now().toSec();
-	double _dt;
+	double _dt = dt;
 	Vector3d sensor(0.0, 0.0, 0.0650);
 	Vector3d sensor_position;
 	MatrixXd robot_CoM_pos = MatrixXd::Zero(3,3);
@@ -453,7 +453,7 @@ int main(int argc, char *argv[]){
 	ros::Time TIME;
 	while(ros::ok()){
 		TIME = ros::Time::now();
-		_dt = TIME.toSec() - st;
+		// _dt = TIME.toSec() - st;
 
 		u(0,0) = ZMP_des(0,i-1);
 		Xx = RungeKutta(dX, Xx, u, tt, dt, A, B, C, D);
@@ -478,10 +478,10 @@ int main(int argc, char *argv[]){
 		// 実機の重心位置の差から速度を求める
 		ROS_INFO("[debug] CoM speed");
 		robot_CoM_spd.col(1) = (robot_CoM_pos.col(1) - robot_CoM_pos.col(0)) / _dt;
-		// robot_CoM_spd.col(2) = LP_Filter(RC,Ts, robot_CoM_spd.col(1), robot_CoM_spd.col(0));
+		robot_CoM_spd.col(2) = LP_Filter(RC,Ts, robot_CoM_spd.col(1), robot_CoM_spd.col(0));
 		//実機の Capture Point を求める
 		ROS_INFO("[debug] capture point");
-		robot_CP = robot_CoM_pos.col(1) + (robot_CoM_spd.col(1) / omega);
+		robot_CP = robot_CoM_pos.col(1) + (robot_CoM_spd.col(2) / omega);
 		robot_CP(2) = 0.0;
 		// 次回の計算用に値を保持する
 		robot_CoM_pos.col(0) = robot_CoM_pos.col(1);
@@ -566,9 +566,9 @@ int main(int argc, char *argv[]){
 		CP_ref_ti(0,i-1) <<","<< CP_ref_ti(1,i-1) <<","<<
 		ZMP_des(0,i-1) <<","<< ZMP_des(1,i-1) <<","<< 
 		LIP_CoM_pos(0,i-1) <<","<< LIP_CoM_pos(1,i-1) <<","<<
-		robot_CoM_pos(0,1) <<","<< robot_CoM_pos(1,1) <<","<<
+		robot_CoM_pos(0,0) <<","<< robot_CoM_pos(1,0) <<","<<
 		LIP_CoM_spd(0,i-1) <<","<< LIP_CoM_spd(1,i-1) <<","<<
-		robot_CoM_spd(0,1) <<","<< robot_CoM_spd(1,1) <<","<<
+		robot_CoM_spd(0,0) <<","<< robot_CoM_spd(1,0) <<","<<
 		LIP_CP(0,i-1) <<","<< LIP_CP(1,i-1) <<","<<
 		robot_CP(0) <<","<< robot_CP(1) <<","<<
 		std::endl;
