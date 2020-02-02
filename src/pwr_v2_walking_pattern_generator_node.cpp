@@ -448,12 +448,12 @@ int main(int argc, char *argv[]){
 	s = 0;
 	i = 1;
 	j = 0;
-	// Hz = 15;
+	Hz = 16;
 	ros::Rate loop_rate_2(Hz);
 	ros::Time TIME;
 	while(ros::ok()){
 		TIME = ros::Time::now();
-		// _dt = TIME.toSec() - st;
+		_dt = TIME.toSec() - st;
 
 		u(0,0) = ZMP_des(0,i-1);
 		Xx = RungeKutta(dX, Xx, u, tt, dt, A, B, C, D);
@@ -477,7 +477,7 @@ int main(int argc, char *argv[]){
 		robot_CoM_pos.col(1) = sensor_position + sub_CoM_vector;
 		// 実機の重心位置の差から速度を求める
 		ROS_INFO("[debug] CoM speed");
-		robot_CoM_spd.col(1) = (robot_CoM_pos.col(1) - robot_CoM_pos.col(0)) / _dt;
+		robot_CoM_spd.col(1) = (robot_CoM_pos.col(1) - robot_CoM_pos.col(0)) / dt;
 		robot_CoM_spd.col(2) = LP_Filter(RC,Ts, robot_CoM_spd.col(1), robot_CoM_spd.col(0));
 		//実機の Capture Point を求める
 		ROS_INFO("[debug] capture point");
@@ -538,6 +538,7 @@ int main(int argc, char *argv[]){
 				ZMP_2_FLEG_Vector(1,1) = ZMP_2_FLEG_Vector(1,0) + dy;
 				if( j<(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) + dz;
 				else if( j>=(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) - dz;
+				if(ZMP_2_FLEG_Vector(2,1)<0.0) ZMP_2_FLEG_Vector(2,1) = 0.0;
 				support_leg_Vector =  robot_CoM_pos.col(1) - ZMP_des.col(i-1);
 				free_leg_Vector = ZMP_2_FLEG_Vector.col(1) - support_leg_Vector;
 				IK_solver(nh, "s_right", support_leg_Vector, urdf_param, timeout, eps, mode);
@@ -552,6 +553,7 @@ int main(int argc, char *argv[]){
 				ZMP_2_FLEG_Vector(1,1) = ZMP_2_FLEG_Vector(1,0) + dy;
 				if( j<(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) + dz;
 				else if( j>=(division/2) ) ZMP_2_FLEG_Vector(2,1) = ZMP_2_FLEG_Vector(2,0) - dz;
+				if(ZMP_2_FLEG_Vector(2,1)<0.0) ZMP_2_FLEG_Vector(2,1) = 0.0;
 				support_leg_Vector =  robot_CoM_pos.col(1) - ZMP_des.col(i-1);
 				free_leg_Vector = ZMP_2_FLEG_Vector.col(1) - support_leg_Vector;
 				IK_solver(nh, "s_left", support_leg_Vector, urdf_param, timeout, eps, mode);
