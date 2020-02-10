@@ -449,7 +449,7 @@ int main(int argc, char *argv[]){
 	ros::Rate loop_rate_2(Hz);
 	ros::Time TIME;
 	std::ofstream fout("/home/shizuki/SynologyDrive/大学/修士論文/record/pwr_v2_exp_.csv");
-	fout << "delta_t,seq,CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,(LIP)CoM_pos_x,(LIP)CoM_pos_y,(IMU)CoM_pos_x,(IMU)CoM_pos_y,(LIP)CoM_spd_x,(LIP)CoM_spd_y,(IMU)CoM_spd_x,(IMU)CoM_spd_y,(LIP)CP_x,(LIP)CP_y,(IMU)CP_x,(IMU)CP_y" << std::endl;
+	fout << "delta_t,seq,CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,ZMP_ref_x,ZMP_ref_y,(LIP)CoM_pos_x,(LIP)CoM_pos_y,(IMU)CoM_pos_x,(IMU)CoM_pos_y,(LIP)CoM_spd_x,(LIP)CoM_spd_y,(IMU)CoM_spd_x,(IMU)CoM_spd_y,(LIP)CP_x,(LIP)CP_y,(IMU)CP_x,(IMU)CP_y" << std::endl;
 	ROS_INFO("[debug] set csv file");
 	while(ros::ok()){
 		TIME = ros::Time::now();
@@ -486,6 +486,18 @@ int main(int argc, char *argv[]){
 		// 次回の計算用に値を保持する
 		robot_CoM_pos.col(0) = robot_CoM_pos.col(1);
 		robot_CoM_spd.col(0) = robot_CoM_spd.col(2);
+
+		fout << _dt <<","<< i-1 <<","<<
+		CP_ref_ti(0,i-1) <<","<< CP_ref_ti(1,i-1) <<","<<
+		ZMP_des(0,i-1) <<","<< ZMP_des(1,i-1) <<","<< 
+		ZMP_ref(0,s) <<","<< ZMP_ref(1,s) <<","<< 
+		LIP_CoM_pos(0,i-1) <<","<< LIP_CoM_pos(1,i-1) <<","<<
+		robot_CoM_pos(0,0) <<","<< robot_CoM_pos(1,0) <<","<<
+		LIP_CoM_spd(0,i-1) <<","<< LIP_CoM_spd(1,i-1) <<","<<
+		robot_CoM_spd(0,0) <<","<< robot_CoM_spd(1,0) <<","<<
+		LIP_CP(0,i-1) <<","<< LIP_CP(1,i-1) <<","<<
+		robot_CP(0) <<","<< robot_CP(1) <<","<<
+		std::endl;
 
 		// 支持多角形内にZMP_desがある場合は足先座標を参照ZMPにする
 		if(ZMP_des(0,i-1)<=(ZMP_ref(0,s)+0.035) && ZMP_des(0,i-1)>=(ZMP_ref(0,s)-0.035) && ZMP_des(1,i-1)<=(ZMP_ref(1,s)+0.0275) && ZMP_des(1,i-1)>=(ZMP_ref(1,s)-0.0275)) {
@@ -568,17 +580,6 @@ int main(int argc, char *argv[]){
 			}
 			waist_pose_publisher(robot_CoM_pos.col(1), TIME, mode);
 		}
-
-		fout << _dt <<","<< i-1 <<","<<
-		CP_ref_ti(0,i-1) <<","<< CP_ref_ti(1,i-1) <<","<<
-		ZMP_des(0,i-1) <<","<< ZMP_des(1,i-1) <<","<< 
-		LIP_CoM_pos(0,i-1) <<","<< LIP_CoM_pos(1,i-1) <<","<<
-		robot_CoM_pos(0,0) <<","<< robot_CoM_pos(1,0) <<","<<
-		LIP_CoM_spd(0,i-1) <<","<< LIP_CoM_spd(1,i-1) <<","<<
-		robot_CoM_spd(0,0) <<","<< robot_CoM_spd(1,0) <<","<<
-		LIP_CP(0,i-1) <<","<< LIP_CP(1,i-1) <<","<<
-		robot_CP(0) <<","<< robot_CP(1) <<","<<
-		std::endl;
 
 		joint_states_pub.publish(joint_state_publisher(joint_angle, TIME));
 		ROS_INFO("[WPG] Publish Point (i=%d, j=%d, leg_mode=%1.1f)",i,j,leg_mode_msg.data);
