@@ -420,7 +420,7 @@ int main(int argc, char *argv[]){
 	Yy(1, 0) = 0;
 
 	double st = ros::Time::now().toSec();
-	double _dt = dt;
+	double _dt;
 	Vector3d sensor(0.0, 0.0, 0.0650);
 	Vector3d sensor_position;
 	MatrixXd robot_CoM_pos = MatrixXd::Zero(3,3);
@@ -428,9 +428,6 @@ int main(int argc, char *argv[]){
 	MatrixXd robot_CP = MatrixXd::Zero(3,1);
 	ROS_INFO("[debug] set Matrix");
 
-	std::ofstream fout("/home/shizuki/SynologyDrive/大学/修士論文/record/pwr_v2_exp_.csv");
-	fout << "delta_t,seq,CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,(LIP)CoM_pos_x,(LIP)CoM_pos_y,(IMU)CoM_pos_x,(IMU)CoM_pos_y,(LIP)CoM_spd_x,(LIP)CoM_spd_y,(IMU)CoM_spd_x,(IMU)CoM_spd_y,(LIP)CP_x,(LIP)CP_y,(IMU)CP_x,(IMU)CP_y" << std::endl;
-	ROS_INFO("[debug] set csv file");
 
 	// 遊脚の軌道
 	Vector3d support_leg_Vector;
@@ -440,7 +437,7 @@ int main(int argc, char *argv[]){
 	Vector3d end_position = ZMP_ref.col(2);
 	double dx = (end_position(0) - start_position(0)) / (double)division;
 	double dy = (end_position(1) - start_position(1)) / (double)division;
-	double dz = 0.025 / ((double)division/2.0);
+	double dz = 0.03 / ((double)division/2.0);
 	ROS_INFO("dx= %lf : dy= %lf : dz= %lf",dx,dy,dz);
 	ZMP_2_FLEG_Vector.col(0) = Left_foot_init_position - ZMP_ref.col(1);
 	ROS_INFO("[debug] set free leg matrix");
@@ -448,9 +445,12 @@ int main(int argc, char *argv[]){
 	s = 0;
 	i = 1;
 	j = 0;
-	Hz = 16;
+	Hz = 15;
 	ros::Rate loop_rate_2(Hz);
 	ros::Time TIME;
+	std::ofstream fout("/home/shizuki/SynologyDrive/大学/修士論文/record/pwr_v2_exp_.csv");
+	fout << "delta_t,seq,CPref(ti)_x,CPref(ti)_y,ZMP_des_x,ZMP_des_y,(LIP)CoM_pos_x,(LIP)CoM_pos_y,(IMU)CoM_pos_x,(IMU)CoM_pos_y,(LIP)CoM_spd_x,(LIP)CoM_spd_y,(IMU)CoM_spd_x,(IMU)CoM_spd_y,(LIP)CP_x,(LIP)CP_y,(IMU)CP_x,(IMU)CP_y" << std::endl;
+	ROS_INFO("[debug] set csv file");
 	while(ros::ok()){
 		TIME = ros::Time::now();
 		_dt = TIME.toSec() - st;
@@ -601,6 +601,7 @@ int main(int argc, char *argv[]){
 			// CPの誤差を修正する所望のZMP(bno055使用)
 			ZMP_des.col(i) = ZMP_ref.col(s) + ( (1.0 + (K/omega)) * ( robot_CP - CP_ref_ti.col(i-1) ) );
 		}
+		
 		i++;
 
 		st = TIME.toSec();
