@@ -15,7 +15,7 @@
     <param name="loop_Hz" value="100.0"/>
     <param name="gain" value="1.0"/>
     <param name="step_mode" value="1"/> <!--歩行計画 前方へ移動：1　その場で足踏み：2 --> 
-    <param name="mode" value="1"/> <!-- ZMP更新 LIPモデル：1　IMU：2 -->
+    <param name="mode" value="2"/> <!-- ZMP更新 LIPモデル：1　IMU：2 -->
 </node>
 <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" /> 
 <node name="bno055_position_est_node" pkg="bno055_usb_stick" type="bno055_position_est_node" output="screen" />

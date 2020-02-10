@@ -487,6 +487,11 @@ int main(int argc, char *argv[]){
 		robot_CoM_pos.col(0) = robot_CoM_pos.col(1);
 		robot_CoM_spd.col(0) = robot_CoM_spd.col(2);
 
+		// 支持多角形内にZMP_desがある場合は足先座標を参照ZMPにする
+		if(ZMP_des(0,i-1)<=(ZMP_ref(0,s)+0.035) && ZMP_des(0,i-1)>=(ZMP_ref(0,s)-0.035) && ZMP_des(1,i-1)<=(ZMP_ref(1,s)+0.0275) && ZMP_des(1,i-1)>=(ZMP_ref(1,s)-0.0275)) {
+			ZMP_des.col(i-1) = ZMP_ref.col(s);
+		}
+
 		if(mode == 1){ // LIPモデルでZMPを修正
 			if(i<=division){
 				ROS_INFO("[IK]Sup:Right / Free:Left");
@@ -601,7 +606,6 @@ int main(int argc, char *argv[]){
 			// CPの誤差を修正する所望のZMP(bno055使用)
 			ZMP_des.col(i) = ZMP_ref.col(s) + ( (1.0 + (K/omega)) * ( robot_CP - CP_ref_ti.col(i-1) ) );
 		}
-		
 		i++;
 
 		st = TIME.toSec();
